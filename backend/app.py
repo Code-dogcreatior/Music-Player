@@ -22,7 +22,7 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from backend.env_config import load_app_env
+from backend.env_config import get_app_env_path, load_app_env, read_app_env, write_app_env
 
 load_app_env()
 
@@ -105,6 +105,13 @@ class LyricsTranslatePayload(BaseModel):
 
 class UiSettingsPayload(BaseModel):
     show_source_columns: bool = False
+
+
+class TranslationSettingsPayload(BaseModel):
+    ali_api_key: str = Field(default="", max_length=512)
+    ali_model: str = Field(default="deepseek-v4-flash", max_length=128)
+    deepseek_api_key: str = Field(default="", max_length=512)
+    deepseek_model: str = Field(default="deepseek-v4-flash", max_length=128)
 
 
 class DownloadJob:
@@ -659,6 +666,90 @@ def config():
     default_save_dir = get_default_save_dir()
     os.makedirs(default_save_dir, exist_ok=True)
     return {"default_save_dir": default_save_dir}
+
+
+def require_local_settings_access(request: Request) -> None:
+    client_host = request.client.host if request.client else ""
+    if client_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(status_code=403, detail="翻译配置只允许从本机访问")
+    origin = (request.headers.get("origin") or "").strip()
+    if not origin:
+        return
+    origin_host = urlparse(origin).hostname or ""
+    if origin_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(status_code=403, detail="翻译配置不允许被外部页面读取")
+
+
+def translation_settings_response() -> dict[str, Any]:
+    env_path = get_app_env_path()
+    file_values = read_app_env(env_path)
+
+    def source_for(name: str, current: str) -> str:
+        if name in file_values:
+            return "env_file"
+        return "system" if current else "none"
+
+    return {
+        "env_path": str(env_path),
+        "env_exists": env_path.is_file(),
+        "ali_api_key": ALI_TRANSLATE_API_KEY,
+        "ali_model": ALI_TRANSLATE_MODEL,
+        "ali_source": source_for("ALI_TRANSLATE_API_KEY", ALI_TRANSLATE_API_KEY),
+        "deepseek_api_key": DEEPSEEK_API_KEY,
+        "deepseek_model": DEEPSEEK_TRANSLATE_MODEL,
+        "deepseek_source": source_for("DEEPSEEK_API_KEY", DEEPSEEK_API_KEY),
+    }
+
+
+def apply_translation_runtime_settings(payload: TranslationSettingsPayload) -> None:
+    global ALI_TRANSLATE_API_KEY, ALI_TRANSLATE_MODEL, DEEPSEEK_API_KEY, DEEPSEEK_TRANSLATE_MODEL
+    ALI_TRANSLATE_API_KEY = payload.ali_api_key.strip()
+    ALI_TRANSLATE_MODEL = payload.ali_model.strip() or "deepseek-v4-flash"
+    DEEPSEEK_API_KEY = payload.deepseek_api_key.strip()
+    DEEPSEEK_TRANSLATE_MODEL = payload.deepseek_model.strip() or "deepseek-v4-flash"
+    os.environ["ALI_TRANSLATE_API_KEY"] = ALI_TRANSLATE_API_KEY
+    os.environ["ALI_TRANSLATE_MODEL"] = ALI_TRANSLATE_MODEL
+    os.environ["DEEPSEEK_API_KEY"] = DEEPSEEK_API_KEY
+    os.environ["DEEPSEEK_TRANSLATE_MODEL"] = DEEPSEEK_TRANSLATE_MODEL
+
+
+@app.get("/api/translation-settings")
+def get_translation_settings(request: Request):
+    require_local_settings_access(request)
+    return translation_settings_response()
+
+
+@app.post("/api/translation-settings")
+def save_translation_settings(payload: TranslationSettingsPayload, request: Request):
+    require_local_settings_access(request)
+    env_path = write_app_env(
+        {
+            "ALI_TRANSLATE_API_KEY": payload.ali_api_key,
+            "ALI_TRANSLATE_MODEL": payload.ali_model or "deepseek-v4-flash",
+            "DEEPSEEK_API_KEY": payload.deepseek_api_key,
+            "DEEPSEEK_TRANSLATE_MODEL": payload.deepseek_model or "deepseek-v4-flash",
+        }
+    )
+    apply_translation_runtime_settings(payload)
+    response = translation_settings_response()
+    response["message"] = f"已保存到 {env_path.name}，当前翻译进程已生效"
+    return response
+
+
+@app.post("/api/translation-settings/reload")
+def reload_translation_settings(request: Request):
+    require_local_settings_access(request)
+    load_app_env(override=True)
+    payload = TranslationSettingsPayload(
+        ali_api_key=os.getenv("ALI_TRANSLATE_API_KEY", ""),
+        ali_model=os.getenv("ALI_TRANSLATE_MODEL", "deepseek-v4-flash"),
+        deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+        deepseek_model=os.getenv("DEEPSEEK_TRANSLATE_MODEL", "deepseek-v4-flash"),
+    )
+    apply_translation_runtime_settings(payload)
+    response = translation_settings_response()
+    response["message"] = "已重新读取本机 .env"
+    return response
 
 
 @app.get("/api/ui-settings")

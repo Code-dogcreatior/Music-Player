@@ -2257,20 +2257,18 @@ body::-webkit-scrollbar {
 .settings-page {
   display: grid;
   gap: 16px;
+  width: min(100%, 680px);
   margin-top: 8px;
 }
 
 .settings-card {
-  max-width: 520px;
+  width: 100%;
+  max-width: none;
   padding: 22px 22px 24px;
   background: #fff;
   border: 1px solid #e5e5ea;
   border-radius: 16px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.04);
-}
-
-.app-update-card {
-  max-width: 680px;
 }
 
 .app-update-heading {
@@ -2345,15 +2343,62 @@ body::-webkit-scrollbar {
   transition: width 180ms ease-out;
 }
 
-.app-update-status {
-  min-height: 20px;
-  margin-top: 9px;
-  color: #6e6e73;
-  font-size: 12px;
+.app-update-status-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 54px;
+  margin-top: 12px;
+  padding: 10px 13px;
+  border: 1px solid #e8e8ed;
+  border-radius: 12px;
+  background: #f8f8fa;
 }
 
-.app-update-status.error {
-  color: #bf2435;
+.app-update-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #22a86a;
+  box-shadow: 0 0 0 5px rgba(34, 168, 106, 0.11);
+}
+
+.app-update-status-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-update-status-row small {
+  color: #8a8a91;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-update-status-row strong {
+  overflow: hidden;
+  color: #2d2d31;
+  font-size: 13px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-update-status-row.available .app-update-status-dot {
+  background: #ec6a35;
+  box-shadow: 0 0 0 5px rgba(236, 106, 53, 0.12);
+}
+
+.app-update-status-row.error .app-update-status-dot {
+  background: #d93346;
+  box-shadow: 0 0 0 5px rgba(217, 51, 70, 0.11);
+}
+
+.app-update-status-row.error strong {
+  color: #b52235;
 }
 
 .app-update-actions {
@@ -2364,13 +2409,332 @@ body::-webkit-scrollbar {
   flex-wrap: wrap;
 }
 
+.app-update-button,
+.settings-save-btn,
+.settings-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 680;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease,
+    opacity 150ms ease;
+}
+
+.app-update-button {
+  padding: 0 17px;
+  border: 1px solid #151517;
+  color: #fff;
+  background: #1d1d1f;
+  box-shadow: 0 7px 16px rgba(29, 29, 31, 0.16);
+}
+
+.app-update-button svg,
+.settings-save-btn svg,
+.settings-secondary-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.app-update-button:hover:not(:disabled),
+.settings-save-btn:hover:not(:disabled),
+.settings-secondary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.app-update-button:hover:not(:disabled) {
+  background: #080809;
+  box-shadow: 0 10px 22px rgba(29, 29, 31, 0.2);
+}
+
+.app-update-button.accent {
+  border-color: #df5a2b;
+  background: #ec6a35;
+  box-shadow: 0 8px 18px rgba(236, 106, 53, 0.2);
+}
+
+.app-update-button.install {
+  border-color: #16905a;
+  background: #1da568;
+  box-shadow: 0 8px 18px rgba(29, 165, 104, 0.2);
+}
+
+.app-update-button:disabled,
+.settings-save-btn:disabled,
+.settings-secondary-btn:disabled {
+  cursor: wait;
+  opacity: 0.52;
+  transform: none;
+  box-shadow: none;
+}
+
 .app-update-manual {
   color: #7c7c82;
   font-size: 12px;
 }
 
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: settings-spin 800ms linear infinite;
+}
+
+.translation-settings-card {
+  min-width: 0;
+}
+
+.translation-settings-heading,
+.translation-provider-row,
+.translation-settings-footer,
+.translation-env-provider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.translation-settings-heading {
+  align-items: flex-start;
+}
+
+.translation-settings-heading .settings-card-desc {
+  margin-bottom: 14px;
+}
+
+.env-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #74747b;
+  background: #f0f0f4;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+}
+
+.env-status-badge > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a0a0a6;
+}
+
+.env-status-badge.ready {
+  color: #14784b;
+  background: #eaf8f1;
+}
+
+.env-status-badge.ready > span {
+  background: #22a86a;
+  box-shadow: 0 0 0 4px rgba(34, 168, 106, 0.1);
+}
+
+.translation-provider-row {
+  align-items: flex-end;
+}
+
+.env-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 280px;
+  padding: 7px 10px;
+  border: 1px solid #e5e5ea;
+  border-radius: 9px;
+  color: #77777e;
+  background: #fafafd;
+  font-size: 11px;
+}
+
+.env-path svg {
+  flex: 0 0 auto;
+}
+
+.env-path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.translation-env-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  transition: opacity 150ms ease;
+}
+
+.translation-env-grid.loading {
+  opacity: 0.55;
+}
+
+.translation-env-provider {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid #e7e7ec;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #fbfbfd 0%, #f7f7fa 100%);
+}
+
+.translation-env-provider-head strong {
+  color: #252527;
+  font-size: 13px;
+}
+
+.translation-env-provider-head small {
+  color: #96969d;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.translation-env-provider-head small.configured {
+  color: #188756;
+}
+
+.translation-field {
+  display: grid;
+  gap: 6px;
+}
+
+.translation-field > span {
+  color: #74747b;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.translation-field > input,
+.secret-input-shell {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dcdce2;
+  border-radius: 10px;
+  background: #fff;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.translation-field > input,
+.secret-input-shell input {
+  min-width: 0;
+  height: 38px;
+  border: none;
+  outline: none;
+  color: #242426;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.translation-field > input {
+  padding: 0 11px;
+}
+
+.secret-input-shell {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.secret-input-shell input {
+  flex: 1;
+  padding: 0 4px 0 11px;
+}
+
+.secret-input-shell button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: none;
+  color: #77777e;
+  background: transparent;
+  cursor: pointer;
+}
+
+.translation-field > input:focus,
+.secret-input-shell:focus-within {
+  border-color: #8a8a91;
+  box-shadow: 0 0 0 3px rgba(29, 29, 31, 0.07);
+}
+
+.translation-settings-footer {
+  align-items: flex-end;
+  margin-top: 15px;
+}
+
+.translation-settings-message {
+  max-width: 360px;
+  color: #77777e;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.translation-settings-message.error {
+  color: #b52235;
+}
+
+.translation-settings-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.settings-secondary-btn {
+  padding: 0 13px;
+  border: 1px solid #dcdce2;
+  color: #4c4c52;
+  background: #fff;
+}
+
+.settings-secondary-btn:hover:not(:disabled) {
+  border-color: #bdbdc4;
+  box-shadow: 0 6px 14px rgba(29, 29, 31, 0.07);
+}
+
+.settings-save-btn {
+  padding: 0 15px;
+  border: 1px solid #151517;
+  color: #fff;
+  background: #1d1d1f;
+  box-shadow: 0 7px 16px rgba(29, 29, 31, 0.15);
+}
+
+.settings-save-btn:hover:not(:disabled) {
+  background: #080809;
+  box-shadow: 0 10px 20px rgba(29, 29, 31, 0.19);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-update-button,
+  .settings-save-btn,
+  .settings-secondary-btn {
+    transition: none;
+  }
+}
+
 .pro-audio-card {
-  max-width: 980px;
+  min-width: 0;
 }
 
 .pro-audio-body {
@@ -2747,6 +3111,29 @@ button:not(:disabled):active,
 }
 
 @media (max-width: 840px) {
+  .translation-env-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .translation-provider-row,
+  .translation-settings-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .env-path {
+    width: 100%;
+    max-width: none;
+  }
+
+  .translation-settings-message {
+    max-width: none;
+  }
+
+  .translation-settings-actions {
+    justify-content: flex-end;
+  }
+
   .shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);

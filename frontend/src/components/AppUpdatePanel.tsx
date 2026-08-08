@@ -1,4 +1,5 @@
 import type { AppUpdateController } from "../hooks/useAppUpdate";
+import { IoCloudDownloadOutline, IoRefreshOutline, IoRocketOutline } from "react-icons/io5";
 
 type AppUpdatePanelProps = {
   update: AppUpdateController;
@@ -14,6 +15,12 @@ export function AppUpdatePanel({ update }: AppUpdatePanelProps) {
   const { info, download, checking, checkError } = update;
   const busy = download.status === "downloading" || download.status === "verifying" || download.status === "installing";
   const statusText = download.error || checkError || download.message || info?.message || "可随时检查 GitHub Release";
+  const hasError = Boolean(download.error || checkError);
+  const statusClassName = hasError
+    ? "app-update-status-row error"
+    : info?.update_available
+      ? "app-update-status-row available"
+      : "app-update-status-row ready";
 
   return (
     <div className="settings-card app-update-card">
@@ -41,14 +48,22 @@ export function AppUpdatePanel({ update }: AppUpdatePanelProps) {
         </div>
       )}
 
-      <div className={download.error || checkError ? "app-update-status error" : "app-update-status"}>{statusText}</div>
+      <div className={statusClassName}>
+        <span className="app-update-status-dot" aria-hidden />
+        <div>
+          <small>{hasError ? "检查失败" : info?.update_available ? "发现新版本" : "更新状态"}</small>
+          <strong>{statusText}</strong>
+        </div>
+      </div>
 
       <div className="app-update-actions">
-        <button type="button" className="mode-btn" disabled={checking || busy} onClick={() => void update.checkForUpdate(true)}>
-          {checking ? "检查中…" : "检查更新"}
+        <button type="button" className="app-update-button" disabled={checking || busy} onClick={() => void update.checkForUpdate(true)}>
+          <IoRefreshOutline className={checking ? "spinning" : ""} aria-hidden />
+          <span>{checking ? "正在连接 GitHub…" : "检查更新"}</span>
         </button>
         {info?.update_available && info.can_auto_update && download.status !== "ready" && (
-          <button type="button" className="mode-btn active" disabled={busy} onClick={() => void update.startDownload()}>
+          <button type="button" className="app-update-button accent" disabled={busy} onClick={() => void update.startDownload()}>
+            <IoCloudDownloadOutline aria-hidden />
             {download.status === "downloading"
               ? `下载中 ${download.percent}%`
               : download.status === "verifying"
@@ -57,7 +72,8 @@ export function AppUpdatePanel({ update }: AppUpdatePanelProps) {
           </button>
         )}
         {download.status === "ready" && (
-          <button type="button" className="mode-btn active" onClick={() => void update.installAndRestart()}>
+          <button type="button" className="app-update-button install" onClick={() => void update.installAndRestart()}>
+            <IoRocketOutline aria-hidden />
             安装并重启
           </button>
         )}
@@ -68,4 +84,3 @@ export function AppUpdatePanel({ update }: AppUpdatePanelProps) {
     </div>
   );
 }
-

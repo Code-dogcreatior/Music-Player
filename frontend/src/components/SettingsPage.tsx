@@ -1,6 +1,7 @@
 import { AudioEffectsPanel } from "../AudioEffectsPanel";
 import { AppUpdatePanel } from "./AppUpdatePanel";
 import { ProAudioToolsPanel } from "./ProAudioToolsPanel";
+import { TranslationSettingsPanel } from "./TranslationSettingsPanel";
 import type { AudioEffectsSettings, MelBandFrame } from "../audioEffects";
 import type { AppUpdateController } from "../hooks/useAppUpdate";
 import type { LyricsDisplayMode, TranslateProvider } from "../types";
@@ -83,26 +84,10 @@ export function SettingsPage({
           <input type="checkbox" checked={showSourceColumns} onChange={(e) => onShowSourceColumnsChange(e.target.checked)} />
         </div>
       </div>
-      <div className="settings-card">
-        <h2 className="settings-card-title">歌词翻译</h2>
-        <p className="settings-card-desc">设置“翻译中文”按钮使用的服务；阿里云失败时后端会自动降级到 DeepSeek。</p>
-        <div className="lyrics-mode-toggle" role="group" aria-label="歌词翻译服务">
-          <button
-            type="button"
-            className={translateProvider === "ali" ? "mode-btn active" : "mode-btn"}
-            onClick={() => onTranslateProviderChange("ali")}
-          >
-            阿里云百炼
-          </button>
-          <button
-            type="button"
-            className={translateProvider === "dp" ? "mode-btn active" : "mode-btn"}
-            onClick={() => onTranslateProviderChange("dp")}
-          >
-            DeepSeek
-          </button>
-        </div>
-      </div>
+      <TranslationSettingsPanel
+        translateProvider={translateProvider}
+        onTranslateProviderChange={onTranslateProviderChange}
+      />
       <AudioEffectsPanel
         settings={audioEffectsSettings}
         status={audioEffectsStatus}
