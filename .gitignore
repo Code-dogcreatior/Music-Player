@@ -1,0 +1,128 @@
+# =====================================================
+# 通用 / 系统
+# =====================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+*.bak
+*.tmp
+*.swp
+*.swo
+
+# =====================================================
+# 编辑器 / IDE
+# =====================================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+.cursor/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =====================================================
+# Python
+# =====================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.python-version
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# =====================================================
+# 构建产物 / 打包输出
+# =====================================================
+build/
+dist/
+dist-ssr/
+*.local
+*.spec.bak
+
+# PyInstaller
+*.manifest
+.music-player-runtime-backup-*/
+# 保留主 spec 文件，仅忽略生成的同名文件夹由上面的 build/ dist/ 处理
+
+# =====================================================
+# Node / 前端
+# =====================================================
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+.parcel-cache/
+.next/
+.nuxt/
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# =====================================================
+# 日志
+# =====================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+vite-dev.log
+
+# =====================================================
+# 项目特定 - 临时 / 性能测试 / 浏览器 profile / 爬取数据
+# =====================================================
+_perf_probe/
+.chrome-test-profile/
+QQMusicClient/
+已下载音乐/
+下载/
+downloads/
+Downloads/
+
+# 常见音频文件（避免误把下载的歌提交进仓库）
+*.mp3
+*.flac
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.wma
+*.ape
+music_player.sqlite3
+
+# =====================================================
+# 环境变量 / 密钥（避免 APIKey 泄露）
+# =====================================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.json
+
+.kagent/
+.claude/
+*.pkl

@@ -1,0 +1,9 @@
+# Pip requirements for the existing `music` conda environment.
+# Install ffmpeg with conda in the same environment if TorchCodec cannot find FFmpeg libraries:
+#   conda install -n music ffmpeg -y
+torch
+torchaudio
+torchcodec>=0.8.0
+demucs>=4.0.1
+soundfile>=0.12.1
+gradio>=4.44.0

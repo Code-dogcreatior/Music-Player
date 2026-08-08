@@ -1,0 +1,1332 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>歌词播放性能测试</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101114;
+        --panel: #181a1f;
+        --panel-2: #20232a;
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f5f7fb;
+        --muted: rgba(245, 247, 251, 0.68);
+        --soft: rgba(245, 247, 251, 0.42);
+        --accent: #3dd6a4;
+        --accent-2: #ffcf5a;
+        --danger: #ff6678;
+        --chart: #7aa7ff;
+        font-family:
+          "Microsoft YaHei UI",
+          "Microsoft YaHei",
+          "PingFang SC",
+          "Noto Sans CJK SC",
+          system-ui,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .bench-shell {
+        height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(360px, 420px) 1fr;
+        min-height: 0;
+      }
+
+      .bench-panel {
+        min-height: 0;
+        overflow: auto;
+        padding: 22px;
+        border-right: 1px solid var(--line);
+        background: rgba(18, 20, 25, 0.96);
+      }
+
+      .bench-stage {
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        position: relative;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 24px;
+        line-height: 1.2;
+        margin-bottom: 8px;
+      }
+
+      .lede {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+        margin-bottom: 18px;
+      }
+
+      .controls {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .control-row {
+        display: grid;
+        grid-template-columns: 1fr 128px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .control-row label {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .control-row input,
+      .control-row select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0f1116;
+        color: var(--text);
+        padding: 8px 10px;
+      }
+
+      .button-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .button-row button,
+      .wide-button {
+        border: 0;
+        border-radius: 8px;
+        color: #0f1116;
+        background: var(--accent);
+        font-weight: 700;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+
+      .button-row button.secondary,
+      .wide-button.secondary {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .status-card,
+      .profile-card,
+      .result-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .status-card {
+        padding: 14px;
+        margin-bottom: 16px;
+      }
+
+      .status-card strong {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 5px;
+      }
+
+      .status-card span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .profile-list {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .profile-card {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .profile-card input {
+        margin-top: 3px;
+      }
+
+      .profile-card strong {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+
+      .profile-card small {
+        display: block;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .result-card {
+        overflow: hidden;
+      }
+
+      .result-card h2 {
+        font-size: 15px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+
+      th {
+        color: var(--soft);
+        font-weight: 600;
+      }
+
+      .pass {
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .warn {
+        color: var(--accent-2);
+        font-weight: 700;
+      }
+
+      .fail {
+        color: var(--danger);
+        font-weight: 700;
+      }
+
+      .notes {
+        display: grid;
+        gap: 8px;
+        padding: 12px 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .copy-box {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0f1116;
+        color: var(--muted);
+        padding: 10px;
+        margin-top: 12px;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 12px;
+      }
+
+      .mock-overlay {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #07080d;
+      }
+
+      .mock-overlay::before {
+        content: "";
+        position: absolute;
+        inset: -14%;
+        opacity: 0.9;
+        background:
+          linear-gradient(130deg, rgba(61, 214, 164, 0.76), rgba(30, 35, 72, 0.7) 42%, rgba(255, 102, 120, 0.62)),
+          repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 16px);
+        filter: blur(var(--bg-blur, 34px)) saturate(var(--bg-sat, 1.15)) brightness(var(--bg-bright, 0.74));
+        transform: scale(1.04);
+        animation: bgDrift var(--bg-speed, 20s) linear infinite;
+        will-change: transform;
+      }
+
+      .mock-overlay.no-bg-animation::before {
+        animation: none;
+      }
+
+      .mock-overlay::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(7, 8, 13, 0.34), rgba(7, 8, 13, 0.72));
+      }
+
+      @keyframes bgDrift {
+        0% {
+          transform: scale(1.04) translate3d(-1%, -1%, 0);
+        }
+        50% {
+          transform: scale(1.08) translate3d(1%, 1%, 0);
+        }
+        100% {
+          transform: scale(1.04) translate3d(-1%, -1%, 0);
+        }
+      }
+
+      .mock-layout {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        display: flex;
+        gap: clamp(46px, 6vw, 120px);
+        padding: 24px clamp(34px, 4vw, 76px) 24px 58px;
+      }
+
+      .mock-left {
+        width: min(34vw, 420px);
+        min-width: 330px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .mock-cover {
+        width: min(26vw, 360px);
+        max-width: 360px;
+        aspect-ratio: 1;
+        border-radius: 10px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02)),
+          linear-gradient(130deg, #3dd6a4, #3950a8 48%, #ff6678);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+      }
+
+      .mock-title {
+        margin-top: 16px;
+      }
+
+      .mock-title h2 {
+        font-size: 32px;
+        line-height: 1.18;
+        margin: 0;
+      }
+
+      .mock-title p {
+        margin-top: 5px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 18px;
+      }
+
+      .mock-controls {
+        width: min(30vw, 420px);
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 26px;
+      }
+
+      .mock-dot {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .mock-dot.big {
+        width: 64px;
+        height: 64px;
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .mock-right {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+      }
+
+      .lyric-viewport {
+        position: absolute;
+        inset: -24px 0;
+        overflow: hidden;
+        padding-left: 28px;
+      }
+
+      .lyrics-inner {
+        will-change: transform;
+        transform: translate3d(0, 0, 0);
+        transition: transform var(--scroll-ms, 420ms) cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .line {
+        color: rgba(255, 255, 255, 0.32);
+        font-size: 28px;
+        line-height: 1.85;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        opacity: 0.82;
+        contain: layout style paint;
+        transition:
+          color 0.2s ease,
+          opacity 0.2s ease,
+          filter 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      .line .translation {
+        display: block;
+        margin-top: -4px;
+        color: rgba(255, 255, 255, 0.62);
+        font-size: 0.58em;
+        line-height: 1.35;
+        font-weight: 560;
+      }
+
+      .line.active {
+        color: #fff;
+        font-size: 42px;
+        font-weight: 700;
+        opacity: 1;
+        filter: none;
+      }
+
+      .line.active .translation {
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      .full .line.near {
+        filter: blur(1.6px);
+        opacity: 0.76;
+      }
+
+      .full .line.mid {
+        filter: blur(2.8px);
+        opacity: 0.58;
+      }
+
+      .full .line.far {
+        filter: blur(4px);
+        opacity: 0.4;
+      }
+
+      .lite .line.near {
+        filter: blur(0.4px);
+        opacity: 0.82;
+      }
+
+      .lite .line.mid {
+        filter: blur(0.8px);
+        opacity: 0.72;
+      }
+
+      .lite .line.far {
+        filter: blur(1.2px);
+        opacity: 0.58;
+      }
+
+      .no-blur .line {
+        filter: none;
+        min-height: 70px;
+      }
+
+      .no-blur .line.active {
+        font-size: 28px;
+        transform: translate3d(0, 0, 0) scale(1.22);
+        transform-origin: left center;
+      }
+
+      .no-blur .line.near {
+        opacity: 0.82;
+      }
+
+      .no-blur .line.mid {
+        opacity: 0.64;
+      }
+
+      .no-blur .line.far {
+        opacity: 0.38;
+      }
+
+      .virtual .line,
+      .pooled .line {
+        min-height: 70px;
+        filter: none;
+        line-height: 1.45;
+        padding: 8px 0;
+      }
+
+      .virtual .line.active,
+      .pooled .line.active {
+        font-size: 34px;
+        transform: translate3d(0, 0, 0);
+      }
+
+      .pooled .lyrics-inner {
+        transition: none;
+      }
+
+      .canvas-layer {
+        position: absolute;
+        inset: -24px 0;
+        width: 100%;
+        height: calc(100% + 48px);
+      }
+
+      .hud {
+        position: absolute;
+        z-index: 3;
+        right: 18px;
+        top: 18px;
+        min-width: 230px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        background: rgba(10, 12, 18, 0.72);
+        padding: 12px;
+        color: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(10px);
+      }
+
+      .hud strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 13px;
+      }
+
+      .hud div {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.64);
+      }
+
+      .hud b {
+        color: #fff;
+      }
+
+      @media (max-width: 980px) {
+        body {
+          overflow: auto;
+        }
+
+        .bench-shell {
+          height: auto;
+          min-height: 100vh;
+          grid-template-columns: 1fr;
+        }
+
+        .bench-panel {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .bench-stage {
+          height: 70vh;
+        }
+
+        .mock-layout {
+          padding: 18px;
+          gap: 0;
+        }
+
+        .mock-left {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bench-shell">
+      <aside class="bench-panel">
+        <h1>歌词播放性能测试</h1>
+        <p class="lede">
+          这个页面会模拟当前全屏歌词的 DOM、滤镜、背景和切句滚动方式，再对比几个优化方案。
+          跑分受显示器刷新率限制：如果浏览器基线只有 60fps，就不能在这台设备上证明 120fps。
+        </p>
+
+        <section class="controls" aria-label="测试控制">
+          <div class="control-row">
+            <label for="duration">每个方案测试时长（秒）</label>
+            <input id="duration" type="number" min="3" max="30" step="1" value="8" />
+          </div>
+          <div class="control-row">
+            <label for="switchMs">模拟切句间隔（毫秒）</label>
+            <input id="switchMs" type="number" min="80" max="1600" step="20" value="260" />
+          </div>
+          <div class="control-row">
+            <label for="lineCount">歌词行数</label>
+            <input id="lineCount" type="number" min="80" max="800" step="20" value="260" />
+          </div>
+          <div class="control-row">
+            <label for="profileSelect">单项测试</label>
+            <select id="profileSelect"></select>
+          </div>
+          <div class="button-row">
+            <button id="runSelected">跑单项</button>
+            <button id="runAll">自动跑全部</button>
+          </div>
+          <button id="stop" class="wide-button secondary" disabled>停止</button>
+        </section>
+
+        <section class="status-card" aria-live="polite">
+          <strong id="statusTitle">待测试</strong>
+          <span id="statusText">建议先点“自动跑全部”，前两项就是当前满血版和残血版模拟。</span>
+        </section>
+
+        <section class="profile-list" id="profileList" aria-label="方案列表"></section>
+
+        <section class="result-card">
+          <h2>结果</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>方案</th>
+                <th>平均 FPS</th>
+                <th>1% Low</th>
+                <th>&gt;16.7ms</th>
+                <th>&gt;8.3ms</th>
+                <th>JS均值</th>
+                <th>目标</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+          <div class="notes" id="notes">
+            <span>平均 FPS 表示测试时段内 requestAnimationFrame 的实际回调频率。</span>
+            <span>1% Low 越高越稳，&gt;16.7ms 对应掉 60Hz 帧，&gt;8.3ms 对应掉 120Hz 帧。</span>
+          </div>
+        </section>
+
+        <textarea id="csvBox" class="copy-box" spellcheck="false" readonly></textarea>
+      </aside>
+
+      <main class="bench-stage" id="stage" aria-label="歌词性能预览"></main>
+    </div>
+
+    <script>
+      const stage = document.getElementById("stage");
+      const statusTitle = document.getElementById("statusTitle");
+      const statusText = document.getElementById("statusText");
+      const resultBody = document.getElementById("resultBody");
+      const notes = document.getElementById("notes");
+      const csvBox = document.getElementById("csvBox");
+      const profileSelect = document.getElementById("profileSelect");
+      const profileList = document.getElementById("profileList");
+      const runSelectedBtn = document.getElementById("runSelected");
+      const runAllBtn = document.getElementById("runAll");
+      const stopBtn = document.getElementById("stop");
+
+      const PROFILES = [
+        {
+          id: "current-full",
+          label: "当前满血版模拟",
+          targetFps: 60,
+          cssClass: "full",
+          bgBlur: 42,
+          bgSat: 1.18,
+          bgBright: 0.72,
+          bgAnimation: true,
+          scrollMs: 420,
+          renderer: "current",
+          detail: "全量 DOM、背景高强度 blur、歌词 blur、active 字号切换、每次切句读 offsetTop。",
+        },
+        {
+          id: "current-lite",
+          label: "当前残血版模拟",
+          targetFps: 120,
+          cssClass: "lite",
+          bgBlur: 18,
+          bgSat: 1.08,
+          bgBright: 0.76,
+          bgAnimation: false,
+          scrollMs: 320,
+          renderer: "current",
+          detail: "保留全量 DOM，降低背景和歌词 blur，关闭背景漂移动画。",
+        },
+        {
+          id: "no-blur-stable",
+          label: "优化 1：去 blur + 稳定行高",
+          targetFps: 120,
+          cssClass: "no-blur",
+          bgBlur: 10,
+          bgSat: 1.04,
+          bgBright: 0.8,
+          bgAnimation: false,
+          scrollMs: 260,
+          renderer: "stable",
+          detail: "歌词只做 opacity/scale，active 不改布局高度，只更新受影响的几行。",
+        },
+        {
+          id: "virtual-window",
+          label: "优化 2：可视窗口虚拟化",
+          targetFps: 120,
+          cssClass: "virtual",
+          bgBlur: 8,
+          bgSat: 1.02,
+          bgBright: 0.82,
+          bgAnimation: false,
+          scrollMs: 220,
+          renderer: "virtual",
+          detail: "只渲染当前行附近约 25 行，目标位置用固定行高计算，避免整表 diff 和布局读取。",
+        },
+        {
+          id: "pooled-window",
+          label: "优化 3：固定 DOM 池",
+          targetFps: 120,
+          cssClass: "pooled",
+          bgBlur: 6,
+          bgSat: 1,
+          bgBright: 0.84,
+          bgAnimation: false,
+          scrollMs: 0,
+          renderer: "pooled",
+          detail: "复用固定数量歌词节点，只替换文字和 class，滚动由 JS 平滑插值控制。",
+        },
+        {
+          id: "canvas-lyrics",
+          label: "优化 4：Canvas 歌词层",
+          targetFps: 120,
+          cssClass: "pooled",
+          bgBlur: 6,
+          bgSat: 1,
+          bgBright: 0.84,
+          bgAnimation: false,
+          scrollMs: 0,
+          renderer: "canvas",
+          detail: "歌词改成 canvas 绘制，可见行逐帧绘制，DOM 只保留播放器骨架。",
+        },
+      ];
+
+      let abortRun = false;
+      let running = false;
+      let liveHud = null;
+      let activeRenderer = null;
+      let results = [];
+
+      function makeLyrics(count) {
+        const zh = [
+          "这一句模拟当前播放的歌词",
+          "灯光落在封面和人声之间",
+          "节拍推进时歌词缓慢靠近",
+          "背景滤镜正在消耗合成时间",
+          "这里用更长的文本测试换行和绘制",
+          "下一句会触发 active 行切换",
+        ];
+        const en = [
+          "A line of translated lyric for rendering cost",
+          "The vocal sits between light and motion",
+          "Every switch moves the whole lyric layer",
+          "Filters and layout reads are the expensive part",
+          "Longer words test the real paint budget",
+          "The next line triggers another active state",
+        ];
+        return Array.from({ length: count }, (_, index) => ({
+          text: `${String(index + 1).padStart(3, "0")}  ${zh[index % zh.length]}`,
+          translation: en[index % en.length],
+        }));
+      }
+
+      function dimOf(index, active) {
+        if (index === active) return "active";
+        const d = Math.abs(index - active);
+        if (d <= 2) return "near";
+        if (d <= 4) return "mid";
+        return "far";
+      }
+
+      function createShell(profile) {
+        stage.innerHTML = "";
+        const overlay = document.createElement("div");
+        overlay.className = `mock-overlay ${profile.cssClass}${profile.bgAnimation ? "" : " no-bg-animation"}`;
+        overlay.style.setProperty("--bg-blur", `${profile.bgBlur}px`);
+        overlay.style.setProperty("--bg-sat", String(profile.bgSat));
+        overlay.style.setProperty("--bg-bright", String(profile.bgBright));
+        overlay.style.setProperty("--scroll-ms", `${profile.scrollMs}ms`);
+
+        overlay.innerHTML = `
+          <div class="mock-layout">
+            <section class="mock-left">
+              <div class="mock-cover"></div>
+              <div class="mock-title">
+                <h2>性能测试曲目</h2>
+                <p>Full vs Lite Lyrics Renderer</p>
+              </div>
+              <div class="mock-controls">
+                <div class="mock-dot"></div>
+                <div class="mock-dot"></div>
+                <div class="mock-dot big"></div>
+                <div class="mock-dot"></div>
+                <div class="mock-dot"></div>
+              </div>
+            </section>
+            <section class="mock-right">
+              <div class="lyric-viewport" data-viewport></div>
+            </section>
+          </div>
+        `;
+        stage.appendChild(overlay);
+        const viewport = overlay.querySelector("[data-viewport]");
+        liveHud = document.createElement("div");
+        liveHud.className = "hud";
+        liveHud.innerHTML = `
+          <strong>${profile.label}</strong>
+          <div><span>live FPS</span><b data-live-fps>--</b></div>
+          <div><span>active</span><b data-active-line>--</b></div>
+          <div><span>JS cost</span><b data-js-cost>--</b></div>
+        `;
+        overlay.appendChild(liveHud);
+        return { overlay, viewport };
+      }
+
+      function lineHtml(line, className) {
+        return `<div class="line ${className}"><span>${line.text}</span><span class="translation">${line.translation}</span></div>`;
+      }
+
+      function makeCurrentRenderer(profile, lyrics, viewport) {
+        const inner = document.createElement("div");
+        inner.className = "lyrics-inner";
+        inner.innerHTML = lyrics.map((line, index) => lineHtml(line, dimOf(index, 0))).join("");
+        viewport.appendChild(inner);
+        const nodes = Array.from(inner.children);
+        let active = 0;
+
+        function update(nextActive) {
+          active = nextActive;
+          for (let index = 0; index < nodes.length; index += 1) {
+            nodes[index].className = `line ${dimOf(index, active)}`;
+          }
+          const target = nodes[active];
+          const desiredY = -(target.offsetTop - viewport.clientHeight / 2 + target.clientHeight / 2);
+          inner.style.transition = profile.scrollMs ? `transform ${profile.scrollMs}ms cubic-bezier(0.16, 1, 0.3, 1)` : "none";
+          inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
+        }
+
+        update(0);
+        return { update, frame: null, destroy: () => {} };
+      }
+
+      function makeStableRenderer(profile, lyrics, viewport) {
+        const inner = document.createElement("div");
+        inner.className = "lyrics-inner";
+        inner.innerHTML = lyrics.map((line, index) => lineHtml(line, dimOf(index, 0))).join("");
+        viewport.appendChild(inner);
+        const nodes = Array.from(inner.children);
+        let active = 0;
+        const rowH = 72;
+
+        function touchAround(center) {
+          const min = Math.max(0, center - 6);
+          const max = Math.min(nodes.length - 1, center + 6);
+          for (let index = min; index <= max; index += 1) {
+            nodes[index].className = `line ${dimOf(index, active)}`;
+          }
+        }
+
+        function update(nextActive) {
+          const previous = active;
+          active = nextActive;
+          touchAround(previous);
+          touchAround(active);
+          const desiredY = -(active * rowH - viewport.clientHeight / 2 + rowH / 2);
+          inner.style.transition = profile.scrollMs ? `transform ${profile.scrollMs}ms cubic-bezier(0.16, 1, 0.3, 1)` : "none";
+          inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
+        }
+
+        update(0);
+        return { update, frame: null, destroy: () => {} };
+      }
+
+      function makeVirtualRenderer(profile, lyrics, viewport) {
+        const inner = document.createElement("div");
+        inner.className = "lyrics-inner";
+        viewport.appendChild(inner);
+        let active = 0;
+        const rowH = 74;
+        const radius = 13;
+
+        function update(nextActive) {
+          active = nextActive;
+          const start = Math.max(0, active - radius);
+          const end = Math.min(lyrics.length - 1, active + radius);
+          let html = "";
+          for (let index = start; index <= end; index += 1) {
+            html += lineHtml(lyrics[index], dimOf(index, active));
+          }
+          inner.innerHTML = html;
+          const desiredY = -(active * rowH - viewport.clientHeight / 2 + rowH / 2);
+          inner.style.paddingTop = `${start * rowH}px`;
+          inner.style.transition = profile.scrollMs ? `transform ${profile.scrollMs}ms cubic-bezier(0.16, 1, 0.3, 1)` : "none";
+          inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
+        }
+
+        update(0);
+        return { update, frame: null, destroy: () => {} };
+      }
+
+      function makePooledRenderer(_profile, lyrics, viewport) {
+        const inner = document.createElement("div");
+        inner.className = "lyrics-inner";
+        viewport.appendChild(inner);
+        const radius = 14;
+        const poolSize = radius * 2 + 1;
+        const rowH = 74;
+        const nodes = Array.from({ length: poolSize }, () => {
+          const node = document.createElement("div");
+          node.className = "line far";
+          node.innerHTML = `<span></span><span class="translation"></span>`;
+          inner.appendChild(node);
+          return node;
+        });
+        let active = 0;
+        let currentY = 0;
+        let targetY = 0;
+
+        function update(nextActive) {
+          active = nextActive;
+          const start = Math.max(0, active - radius);
+          for (let slot = 0; slot < nodes.length; slot += 1) {
+            const index = start + slot;
+            const node = nodes[slot];
+            if (index >= lyrics.length) {
+              node.style.visibility = "hidden";
+              continue;
+            }
+            node.style.visibility = "visible";
+            node.className = `line ${dimOf(index, active)}`;
+            node.children[0].textContent = lyrics[index].text;
+            node.children[1].textContent = lyrics[index].translation;
+          }
+          inner.style.paddingTop = `${start * rowH}px`;
+          targetY = -(active * rowH - viewport.clientHeight / 2 + rowH / 2);
+        }
+
+        function frame() {
+          currentY += (targetY - currentY) * 0.22;
+          if (Math.abs(currentY - targetY) < 0.15) currentY = targetY;
+          inner.style.transform = `translate3d(0, ${currentY}px, 0)`;
+        }
+
+        update(0);
+        currentY = targetY;
+        return { update, frame, destroy: () => {} };
+      }
+
+      function makeCanvasRenderer(_profile, lyrics, viewport) {
+        const canvas = document.createElement("canvas");
+        canvas.className = "canvas-layer";
+        viewport.appendChild(canvas);
+        const ctx = canvas.getContext("2d");
+        const rowH = 78;
+        let dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        let active = 0;
+        let currentY = 0;
+        let targetY = 0;
+
+        function resize() {
+          const rect = viewport.getBoundingClientRect();
+          dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+          canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+          canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+          canvas.style.width = `${rect.width}px`;
+          canvas.style.height = `${rect.height}px`;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        function update(nextActive) {
+          active = nextActive;
+          targetY = -(active * rowH - viewport.clientHeight / 2 + rowH / 2);
+        }
+
+        function draw() {
+          currentY += (targetY - currentY) * 0.24;
+          if (Math.abs(currentY - targetY) < 0.15) currentY = targetY;
+          const width = canvas.width / dpr;
+          const height = canvas.height / dpr;
+          ctx.clearRect(0, 0, width, height);
+          const start = Math.max(0, Math.floor((-currentY - rowH) / rowH));
+          const end = Math.min(lyrics.length - 1, start + Math.ceil(height / rowH) + 4);
+          for (let index = start; index <= end; index += 1) {
+            const d = Math.abs(index - active);
+            const y = currentY + index * rowH + height / 2 - 24;
+            const isActive = index === active;
+            const alpha = isActive ? 1 : d <= 2 ? 0.76 : d <= 4 ? 0.54 : 0.32;
+            const fontSize = isActive ? 34 : 28;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `${isActive ? 700 : 600} ${fontSize}px "Microsoft YaHei UI", sans-serif`;
+            ctx.fillText(lyrics[index].text, 0, y);
+            ctx.globalAlpha = isActive ? 0.82 : 0.58;
+            ctx.font = `560 16px "Microsoft YaHei UI", sans-serif`;
+            ctx.fillText(lyrics[index].translation, 0, y + 28);
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        resize();
+        update(0);
+        currentY = targetY;
+        window.addEventListener("resize", resize);
+        return { update, frame: draw, destroy: () => window.removeEventListener("resize", resize) };
+      }
+
+      const RENDERERS = {
+        current: makeCurrentRenderer,
+        stable: makeStableRenderer,
+        virtual: makeVirtualRenderer,
+        pooled: makePooledRenderer,
+        canvas: makeCanvasRenderer,
+      };
+
+      function percentile(values, p) {
+        if (!values.length) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+        return sorted[idx];
+      }
+
+      function targetClass(value, target) {
+        if (value >= target * 0.96) return "pass";
+        if (value >= target * 0.82) return "warn";
+        return "fail";
+      }
+
+      function fmt(value, digits = 1) {
+        return Number.isFinite(value) ? value.toFixed(digits) : "--";
+      }
+
+      function readOptions() {
+        return {
+          durationMs: Number(document.getElementById("duration").value || 8) * 1000,
+          switchMs: Number(document.getElementById("switchMs").value || 260),
+          lineCount: Number(document.getElementById("lineCount").value || 260),
+        };
+      }
+
+      async function measureBaseline(durationMs) {
+        statusTitle.textContent = "测量浏览器基线";
+        statusText.textContent = "先测空场景 rAF 上限，用来判断 120fps 是否能被当前显示器验证。";
+        stage.innerHTML = '<div class="mock-overlay no-bg-animation"><div class="hud"><strong>Baseline</strong><div><span>measuring</span><b>...</b></div></div></div>';
+        return new Promise((resolve) => {
+          const deltas = [];
+          let frames = 0;
+          let start = 0;
+          let last = 0;
+          function tick(now) {
+            if (!start) {
+              start = now;
+              last = now;
+            }
+            const dt = now - last;
+            last = now;
+            if (dt > 0) deltas.push(dt);
+            frames += 1;
+            if (now - start >= durationMs || abortRun) {
+              const elapsed = now - start;
+              resolve({
+                fps: frames / (elapsed / 1000),
+                p99: percentile(deltas, 0.99),
+              });
+              return;
+            }
+            requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+        });
+      }
+
+      async function runProfile(profile, options, baselineFps) {
+        const lyrics = makeLyrics(options.lineCount);
+        const { viewport } = createShell(profile);
+        activeRenderer = RENDERERS[profile.renderer](profile, lyrics, viewport);
+        statusTitle.textContent = profile.label;
+        statusText.textContent = profile.detail;
+
+        return new Promise((resolve) => {
+          const deltas = [];
+          const updateCosts = [];
+          let frames = 0;
+          let switches = 0;
+          let dropped60 = 0;
+          let dropped120 = 0;
+          let active = 0;
+          let start = 0;
+          let last = 0;
+          let nextSwitchAt = 0;
+          let liveSince = 0;
+          let liveFrames = 0;
+
+          function switchLine() {
+            active = (active + 1) % lyrics.length;
+            const t0 = performance.now();
+            activeRenderer.update(active);
+            const cost = performance.now() - t0;
+            updateCosts.push(cost);
+            switches += 1;
+            const jsNode = liveHud && liveHud.querySelector("[data-js-cost]");
+            const activeNode = liveHud && liveHud.querySelector("[data-active-line]");
+            if (jsNode) jsNode.textContent = `${fmt(cost, 2)}ms`;
+            if (activeNode) activeNode.textContent = String(active + 1);
+          }
+
+          function tick(now) {
+            if (!start) {
+              start = now;
+              last = now;
+              nextSwitchAt = now;
+              liveSince = now;
+            }
+
+            const dt = now - last;
+            last = now;
+            if (dt > 0) {
+              deltas.push(dt);
+              if (dt > 16.7) dropped60 += 1;
+              if (dt > 8.3) dropped120 += 1;
+            }
+            frames += 1;
+            liveFrames += 1;
+
+            if (now >= nextSwitchAt) {
+              switchLine();
+              nextSwitchAt += options.switchMs;
+              if (now - nextSwitchAt > options.switchMs * 2) nextSwitchAt = now + options.switchMs;
+            }
+
+            if (activeRenderer.frame) {
+              const t0 = performance.now();
+              activeRenderer.frame(now);
+              updateCosts.push(performance.now() - t0);
+            }
+
+            if (now - liveSince >= 500) {
+              const fpsNode = liveHud && liveHud.querySelector("[data-live-fps]");
+              if (fpsNode) fpsNode.textContent = fmt(liveFrames / ((now - liveSince) / 1000), 1);
+              liveFrames = 0;
+              liveSince = now;
+            }
+
+            if (now - start >= options.durationMs || abortRun) {
+              const elapsed = now - start;
+              const fps = frames / (elapsed / 1000);
+              const p99 = percentile(deltas, 0.99);
+              const low1 = p99 > 0 ? 1000 / p99 : 0;
+              const avgJs = updateCosts.length ? updateCosts.reduce((a, b) => a + b, 0) / updateCosts.length : 0;
+              const maxJs = updateCosts.length ? Math.max(...updateCosts) : 0;
+              const result = {
+                id: profile.id,
+                label: profile.label,
+                fps,
+                low1,
+                dropped60,
+                dropped120,
+                avgJs,
+                maxJs,
+                switches,
+                targetFps: Math.min(profile.targetFps, baselineFps || profile.targetFps),
+                requestedTargetFps: profile.targetFps,
+              };
+              activeRenderer.destroy();
+              activeRenderer = null;
+              resolve(result);
+              return;
+            }
+
+            requestAnimationFrame(tick);
+          }
+
+          requestAnimationFrame(tick);
+        });
+      }
+
+      function renderProfiles() {
+        profileSelect.innerHTML = "";
+        profileList.innerHTML = "";
+        for (const profile of PROFILES) {
+          const option = document.createElement("option");
+          option.value = profile.id;
+          option.textContent = profile.label;
+          profileSelect.appendChild(option);
+
+          const card = document.createElement("label");
+          card.className = "profile-card";
+          card.innerHTML = `
+            <input type="checkbox" data-profile-check="${profile.id}" checked />
+            <span>
+              <strong>${profile.label}</strong>
+              <small>${profile.detail}</small>
+            </span>
+          `;
+          profileList.appendChild(card);
+        }
+      }
+
+      function renderResults(baseline) {
+        resultBody.innerHTML = "";
+        for (const result of results) {
+          const target = result.requestedTargetFps;
+          const cls = targetClass(result.fps, Math.min(target, baseline ? baseline.fps : target));
+          const targetText = result.fps >= target * 0.96 ? "达标" : result.fps >= target * 0.82 ? "接近" : "未达";
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${result.label}</td>
+            <td class="${cls}">${fmt(result.fps)}</td>
+            <td>${fmt(result.low1)}</td>
+            <td>${result.dropped60}</td>
+            <td>${result.dropped120}</td>
+            <td>${fmt(result.avgJs, 2)}ms</td>
+            <td class="${cls}">${targetText} ${target}fps</td>
+          `;
+          resultBody.appendChild(row);
+        }
+
+        const baselineText = baseline
+          ? `浏览器基线：${fmt(baseline.fps)}fps，p99 帧间隔 ${fmt(baseline.p99, 2)}ms。`
+          : "浏览器基线：未测。";
+        const full = results.find((item) => item.id === "current-full");
+        const lite = results.find((item) => item.id === "current-lite");
+        const best = results.reduce((winner, item) => (!winner || item.fps > winner.fps ? item : winner), null);
+        const advice = [];
+        advice.push(`<span>${baselineText}</span>`);
+        if (full) {
+          advice.push(`<span>满血版模拟：${fmt(full.fps)}fps，${full.fps >= 60 ? "已超过 60fps" : "未到 60fps，主要看背景/歌词 blur 和布局读取成本"}。</span>`);
+        }
+        if (lite) {
+          advice.push(`<span>残血版模拟：${fmt(lite.fps)}fps，${lite.fps >= 120 ? "已超过 120fps" : "未到 120fps，继续看无 blur、虚拟化或固定 DOM 池方案"}。</span>`);
+        }
+        if (best) {
+          advice.push(`<span>本轮最快：${best.label}，平均 ${fmt(best.fps)}fps，1% Low ${fmt(best.low1)}fps。</span>`);
+        }
+        if (baseline && baseline.fps < 100) {
+          advice.push(`<span class="warn">当前显示器/浏览器 rAF 基线低于 100fps，这台机器无法直接验证 120fps，上 120Hz 屏或关闭系统限帧后再测。</span>`);
+        }
+        notes.innerHTML = advice.join("");
+
+        const header = "profile,avg_fps,one_percent_low,dropped_over_16_7ms,dropped_over_8_3ms,avg_js_ms,max_js_ms,switches,target_fps";
+        const lines = results.map((r) =>
+          [
+            r.label,
+            fmt(r.fps),
+            fmt(r.low1),
+            r.dropped60,
+            r.dropped120,
+            fmt(r.avgJs, 3),
+            fmt(r.maxJs, 3),
+            r.switches,
+            r.requestedTargetFps,
+          ]
+            .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
+            .join(",")
+        );
+        csvBox.value = [header, ...lines].join("\n");
+      }
+
+      async function runProfiles(profiles) {
+        if (running) return;
+        running = true;
+        abortRun = false;
+        runSelectedBtn.disabled = true;
+        runAllBtn.disabled = true;
+        stopBtn.disabled = false;
+        results = [];
+        renderResults(null);
+
+        try {
+          const options = readOptions();
+          const baseline = await measureBaseline(Math.min(2500, options.durationMs));
+          for (const profile of profiles) {
+            if (abortRun) break;
+            const result = await runProfile(profile, options, baseline.fps);
+            results.push(result);
+            renderResults(baseline);
+            await new Promise((resolve) => setTimeout(resolve, 260));
+          }
+          statusTitle.textContent = abortRun ? "已停止" : "测试完成";
+          statusText.textContent = abortRun ? "本轮测试被手动停止。" : "结果已经生成，可以看表格或复制 CSV。";
+          renderResults(baseline);
+        } finally {
+          if (activeRenderer) {
+            activeRenderer.destroy();
+            activeRenderer = null;
+          }
+          running = false;
+          runSelectedBtn.disabled = false;
+          runAllBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+
+      function selectedProfiles() {
+        return PROFILES.filter((profile) => {
+          const checkbox = document.querySelector(`[data-profile-check="${profile.id}"]`);
+          return checkbox && checkbox.checked;
+        });
+      }
+
+      renderProfiles();
+      renderResults(null);
+
+      runSelectedBtn.addEventListener("click", () => {
+        const profile = PROFILES.find((item) => item.id === profileSelect.value) || PROFILES[0];
+        runProfiles([profile]);
+      });
+
+      runAllBtn.addEventListener("click", () => {
+        const profiles = selectedProfiles();
+        runProfiles(profiles.length ? profiles : PROFILES);
+      });
+
+      stopBtn.addEventListener("click", () => {
+        abortRun = true;
+      });
+
+      const autorun = new URLSearchParams(window.location.search).get("autorun");
+      if (autorun === "1") {
+        window.addEventListener("load", () => setTimeout(() => runProfiles(PROFILES), 500));
+      }
+    </script>
+  </body>
+</html>

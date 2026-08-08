@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+musicdl
+requests
+pyinstaller
+mutagen
+PySide6
+musicbrainzngs
+pylistenbrainz
