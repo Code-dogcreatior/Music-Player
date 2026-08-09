@@ -91,11 +91,6 @@ class LocalDeletePayload(BaseModel):
     save_dir: str
 
 
-class LyricShiftPayload(BaseModel):
-    lyric_path: str = Field(min_length=1)
-    delta_sec: float
-
-
 class LyricsTranslatePayload(BaseModel):
     lrc_url: str | None = None
     lyric_path: str | None = None
@@ -1569,63 +1564,6 @@ def split_lrc_line(line: str) -> tuple[str, str]:
     return tags, text
 
 
-def parse_lrc_timestamp(tag: str) -> float | None:
-    match = re.match(r"\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]", tag)
-    if not match:
-        return None
-    minute = int(match.group(1))
-    second = int(match.group(2))
-    frac_raw = match.group(3) or ""
-    frac = int(frac_raw.ljust(3, "0")) if frac_raw else 0
-    return minute * 60 + second + frac / 1000
-
-
-def format_lrc_timestamp(total_sec: float) -> str:
-    safe_sec = max(0.0, total_sec)
-    minute = int(safe_sec // 60)
-    second_whole = int(safe_sec % 60)
-    milli = int(round((safe_sec - int(safe_sec)) * 1000))
-    if milli >= 1000:
-        milli = 0
-        second_whole += 1
-    if second_whole >= 60:
-        second_whole -= 60
-        minute += 1
-    return f"[{minute:02d}:{second_whole:02d}.{milli:03d}]"
-
-
-def shift_lrc_text_timestamps(raw_text: str, delta_sec: float) -> tuple[str, int]:
-    changed_count = 0
-
-    def repl(match: re.Match[str]) -> str:
-        nonlocal changed_count
-        original = match.group(0)
-        sec = parse_lrc_timestamp(original)
-        if sec is None:
-            return original
-        shifted = format_lrc_timestamp(sec + delta_sec)
-        if shifted != original:
-            changed_count += 1
-        return shifted
-
-    shifted_text = LRC_TIME_PATTERN.sub(repl, raw_text)
-    return shifted_text, changed_count
-
-
-def write_text_file_with_detected_encoding(path: str, content: str) -> None:
-    for encoding in ("utf-8", "gbk", "utf-16"):
-        try:
-            with open(path, "r", encoding=encoding) as file:
-                file.read()
-            with open(path, "w", encoding=encoding) as file:
-                file.write(content)
-            return
-        except UnicodeDecodeError:
-            continue
-    with open(path, "w", encoding="utf-8") as file:
-        file.write(content)
-
-
 def clean_lyric_text(text: str) -> str:
     return re.sub(r"[^\w\u3040-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af]+", "", text, flags=re.UNICODE)
 
@@ -1803,47 +1741,6 @@ def translate_line_with_deepseek(text: str) -> str:
     response.raise_for_status()
     data = response.json()
     return str(data["choices"][0]["message"]["content"]).strip()
-
-
-@app.post("/api/lyrics/shift")
-def shift_local_lyrics(payload: LyricShiftPayload):
-    lyric_path = os.path.normpath(os.path.expanduser((payload.lyric_path or "").strip()))
-    if not lyric_path:
-        raise HTTPException(status_code=400, detail="lyric_path 不能为空")
-    if not os.path.isfile(lyric_path):
-        raise HTTPException(status_code=404, detail="歌词文件不存在")
-    if not lyric_path.lower().endswith(".lrc"):
-        raise HTTPException(status_code=400, detail="仅支持 .lrc 文件")
-    if abs(payload.delta_sec) < 1e-9:
-        return {"ok": True, "delta_sec": 0.0, "changed_tags": 0, "changed_translation_tags": 0}
-
-    try:
-        raw = read_text_file(lyric_path)
-        if not raw:
-            raise HTTPException(status_code=500, detail="歌词文件读取失败或为空")
-
-        shifted, changed_tags = shift_lrc_text_timestamps(raw, payload.delta_sec)
-        write_text_file_with_detected_encoding(lyric_path, shifted)
-
-        zh_path = get_translation_lrc_path(lyric_path, "ali")
-        changed_translation_tags = 0
-        if os.path.isfile(zh_path):
-            zh_raw = read_text_file(zh_path)
-            if zh_raw:
-                zh_shifted, changed_translation_tags = shift_lrc_text_timestamps(zh_raw, payload.delta_sec)
-                write_text_file_with_detected_encoding(zh_path, zh_shifted)
-
-        return {
-            "ok": True,
-            "delta_sec": payload.delta_sec,
-            "changed_tags": changed_tags,
-            "translation_path": zh_path if os.path.isfile(zh_path) else "",
-            "changed_translation_tags": changed_translation_tags,
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"调整歌词时间失败: {exc}") from exc
 
 
 @app.get("/")

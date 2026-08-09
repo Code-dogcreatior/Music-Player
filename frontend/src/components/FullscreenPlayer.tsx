@@ -1,8 +1,6 @@
 import type { CSSProperties, PointerEvent, RefObject } from "react";
 import {
   IoClose,
-  IoChevronBack,
-  IoChevronForward,
   IoLanguage,
   IoPause,
   IoPlay,
@@ -58,9 +56,6 @@ type FullscreenPlayerProps = {
   onCycleRepeatMode: () => void;
   onVolumeChange: (value: number) => void;
   onToggleChineseTranslation: () => void;
-  lyricShiftEnabled: boolean;
-  lyricShiftSec: number;
-  onShiftLyricTiming: (deltaSec: number) => void;
   onSeekToTime: (timeSec: number) => void;
   onRegisterLyricRef: (index: number, el: HTMLDivElement | null) => void;
 };
@@ -106,9 +101,6 @@ export function FullscreenPlayer({
   onCycleRepeatMode,
   onVolumeChange,
   onToggleChineseTranslation,
-  lyricShiftEnabled,
-  lyricShiftSec,
-  onShiftLyricTiming,
   onSeekToTime,
   onRegisterLyricRef,
 }: FullscreenPlayerProps) {
@@ -255,52 +247,6 @@ export function FullscreenPlayer({
                 )}
               </button>
             )}
-            <div className="overlay-lyric-shift">
-              <button
-                className="overlay-shift-btn"
-                type="button"
-                disabled={!lyricShiftEnabled}
-                onClick={() => onShiftLyricTiming(-0.5)}
-                title={lyricShiftEnabled ? "歌词整体提前 0.5 秒" : "仅本地歌词可调整"}
-              >
-                <IoChevronBack />
-                提前0.5s
-              </button>
-              <button
-                className="overlay-shift-btn"
-                type="button"
-                disabled={!lyricShiftEnabled}
-                onClick={() => onShiftLyricTiming(-0.1)}
-                title={lyricShiftEnabled ? "歌词整体提前 0.1 秒" : "仅本地歌词可调整"}
-              >
-                <IoChevronBack />
-                提前0.1s
-              </button>
-              <span className="overlay-shift-value">
-                {lyricShiftSec >= 0 ? "+" : ""}
-                {lyricShiftSec.toFixed(1)}s
-              </span>
-              <button
-                className="overlay-shift-btn"
-                type="button"
-                disabled={!lyricShiftEnabled}
-                onClick={() => onShiftLyricTiming(0.1)}
-                title={lyricShiftEnabled ? "歌词整体延后 0.1 秒" : "仅本地歌词可调整"}
-              >
-                延后0.1s
-                <IoChevronForward />
-              </button>
-              <button
-                className="overlay-shift-btn"
-                type="button"
-                disabled={!lyricShiftEnabled}
-                onClick={() => onShiftLyricTiming(0.5)}
-                title={lyricShiftEnabled ? "歌词整体延后 0.5 秒" : "仅本地歌词可调整"}
-              >
-                延后0.5s
-                <IoChevronForward />
-              </button>
-            </div>
           </div>
         </div>
         <div className="overlay-right">

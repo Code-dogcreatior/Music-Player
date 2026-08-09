@@ -40,7 +40,7 @@ export type LyricLine = {
 };
 
 export type LyricDim = "active" | "near" | "mid" | "far";
-export type ActiveView = "recommendations" | "search" | "downloaded" | "settings";
+export type ActiveView = "search" | "downloaded" | "settings";
 export type LyricsDisplayMode = "full" | "performance";
 export type PlayMode = "order" | "shuffle";
 export type TranslateProvider = "ali" | "dp";

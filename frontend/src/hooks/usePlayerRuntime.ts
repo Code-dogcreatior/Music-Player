@@ -23,7 +23,6 @@ type UsePlayerRuntimeOptions = {
   currentSong: Song | null;
   currentSongRef: RefObject<Song | null>;
   setCurrentSong: Dispatch<SetStateAction<Song | null>>;
-  setLyricShiftSec: Dispatch<SetStateAction<number>>;
   cancelLyricsRequests: () => void;
   resetTranslationState: () => void;
   loadLyrics: (song: Song) => void | Promise<void>;
@@ -75,7 +74,6 @@ export function usePlayerRuntime({
   currentSong,
   currentSongRef,
   setCurrentSong,
-  setLyricShiftSec,
   cancelLyricsRequests,
   resetTranslationState,
   loadLyrics,
@@ -176,7 +174,6 @@ export function usePlayerRuntime({
         await new Promise((resolve) => window.setTimeout(resolve, 0));
         audio = audioRef.current;
       }
-      setLyricShiftSec(0);
       currentSongRef.current = song;
       setCurrentSong(song);
       setPlaybackClock(0, true);
@@ -218,7 +215,6 @@ export function usePlayerRuntime({
       releaseAudioEffects,
       saveDir,
       setCurrentSong,
-      setLyricShiftSec,
       setPlaybackClock,
       setPlaybackDuration,
       startLyricsRuntime,

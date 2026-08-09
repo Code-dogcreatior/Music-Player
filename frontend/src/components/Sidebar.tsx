@@ -1,9 +1,11 @@
+import { IoChevronBack, IoChevronForward } from "react-icons/io5";
 import type { ActiveView } from "../types";
 
 type SidebarProps = {
   activeView: ActiveView;
   isNarrowViewport: boolean;
   narrowSidebarOpen: boolean;
+  collapsed: boolean;
   sources: Record<string, string>;
   selectedSources: string[];
   saveDir: string;
@@ -11,6 +13,7 @@ type SidebarProps = {
   onSetActiveView: (view: ActiveView) => void;
   onLoadDownloadedSongs: () => void;
   onCloseNarrowSidebar: () => void;
+  onToggleCollapsed: () => void;
   onSaveDirChange: (value: string) => void;
   onLimitChange: (value: number) => void;
   onToggleSource: (value: string) => void;
@@ -20,6 +23,7 @@ export function Sidebar({
   activeView,
   isNarrowViewport,
   narrowSidebarOpen,
+  collapsed,
   sources,
   selectedSources,
   saveDir,
@@ -27,6 +31,7 @@ export function Sidebar({
   onSetActiveView,
   onLoadDownloadedSongs,
   onCloseNarrowSidebar,
+  onToggleCollapsed,
   onSaveDirChange,
   onLimitChange,
   onToggleSource,
@@ -51,15 +56,24 @@ export function Sidebar({
           </button>
         </div>
       )}
-      <div className="brand">Music</div>
+      <div className="sidebar-top">
+        <div className="brand">Music</div>
+        {!isNarrowViewport && (
+          <button
+            type="button"
+            className="desktop-sidebar-toggle"
+            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            aria-expanded={!collapsed}
+            aria-controls="app-sidebar"
+            onClick={onToggleCollapsed}
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            {collapsed ? <IoChevronForward aria-hidden /> : <IoChevronBack aria-hidden />}
+          </button>
+        )}
+      </div>
       <div className="section-title">Library</div>
       <div className="menu-list">
-        <button
-          className={activeView === "recommendations" ? "menu-item active" : "menu-item"}
-          onClick={() => onSetActiveView("recommendations")}
-        >
-          推荐
-        </button>
         <button
           className={activeView === "search" ? "menu-item active" : "menu-item"}
           onClick={() => onSetActiveView("search")}
@@ -90,7 +104,7 @@ export function Sidebar({
         value={limit}
         onChange={(e) => onLimitChange(Number(e.target.value))}
       />
-      <label>综合推荐音乐源（单选）</label>
+      <label>常用音乐源（单选）</label>
       <div className="chips">
         {recommended.map(([cn, en]) => (
           <button

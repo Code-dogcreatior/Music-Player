@@ -29,26 +29,14 @@ export type DownloadToast = {
   percent: number;
 };
 
-export type RecommendationJobResponse = {
-  job_id?: string;
-  status?: string;
-  songs?: Song[];
-  message?: string;
-  error?: string;
-};
-
 type UseAsyncJobsOptions = {
   jobId: string;
   setJobId: Dispatch<SetStateAction<string>>;
   searchJobId: string;
   setSearchJobId: Dispatch<SetStateAction<string>>;
-  recommendationJobId: string;
-  setRecommendationJobId: Dispatch<SetStateAction<string>>;
   setSongs: Dispatch<SetStateAction<Song[]>>;
-  setRecommendedSongs: Dispatch<SetStateAction<Song[]>>;
   setSelectedIndexes: Dispatch<SetStateAction<Set<number>>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
-  setRecommendationLoading: Dispatch<SetStateAction<boolean>>;
 };
 
 export function cancelController(ref: MutableRefObject<AbortController | null>) {
@@ -108,18 +96,13 @@ export function useAsyncJobs({
   setJobId,
   searchJobId,
   setSearchJobId,
-  recommendationJobId,
-  setRecommendationJobId,
   setSongs,
-  setRecommendedSongs,
   setSelectedIndexes,
   setLoading,
-  setRecommendationLoading,
 }: UseAsyncJobsOptions) {
   const [downloadToast, setDownloadToast] = useState<DownloadToast | null>(null);
   const searchPollAbortRef = useRef<AbortController | null>(null);
   const searchSubmitLockRef = useRef(false);
-  const recommendationPollAbortRef = useRef<AbortController | null>(null);
   const downloadPollAbortRef = useRef<AbortController | null>(null);
   const downloadToastTimerRef = useRef<number | null>(null);
   const downloadToastDismissedRef = useRef(false);
@@ -147,55 +130,6 @@ export function useAsyncJobs({
     }
     setDownloadToast((current) => (current ? { ...current, visible: false } : current));
   }, []);
-
-  useEffect(() => {
-    if (!recommendationJobId) return;
-    let cancelled = false;
-    let timer: number | null = null;
-    const controller = nextController(recommendationPollAbortRef);
-
-    const poll = async () => {
-      try {
-        const { data } = await requestJson<RecommendationJobResponse>(`/api/recommendations/${recommendationJobId}`, {
-          timeoutMs: 8_000,
-          signal: controller.signal,
-        });
-        if (cancelled) return;
-
-        if (data.status === "finished") {
-          setRecommendedSongs(data.songs ?? []);
-          setSelectedIndexes(new Set());
-          setRecommendationLoading(false);
-          setRecommendationJobId("");
-          return;
-        }
-        if (data.status === "failed") {
-          setRecommendedSongs([]);
-          setRecommendationLoading(false);
-          setRecommendationJobId("");
-          return;
-        }
-        timer = window.setTimeout(poll, 1000);
-      } catch (error) {
-        if (cancelled || isAbortError(error)) return;
-        setRecommendationLoading(false);
-        setRecommendationJobId("");
-      }
-    };
-
-    timer = window.setTimeout(poll, 300);
-    return () => {
-      cancelled = true;
-      cancelController(recommendationPollAbortRef);
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [
-    recommendationJobId,
-    setRecommendationJobId,
-    setRecommendationLoading,
-    setRecommendedSongs,
-    setSelectedIndexes,
-  ]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -329,7 +263,6 @@ export function useAsyncJobs({
       if (downloadToastTimerRef.current !== null) window.clearTimeout(downloadToastTimerRef.current);
       cancelController(searchPollAbortRef);
       searchSubmitLockRef.current = false;
-      cancelController(recommendationPollAbortRef);
       cancelController(downloadPollAbortRef);
     };
   }, []);
@@ -341,7 +274,6 @@ export function useAsyncJobs({
     searchSubmitLockRef,
     downloadToastDismissedRef,
     cancelSearchPoll: () => cancelController(searchPollAbortRef),
-    cancelRecommendationPoll: () => cancelController(recommendationPollAbortRef),
     cancelDownloadPoll: () => cancelController(downloadPollAbortRef),
   };
 }

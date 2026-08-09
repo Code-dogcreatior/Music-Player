@@ -16,7 +16,6 @@ import {
   nextController,
   useAsyncJobs,
   waitForMsOrAbort,
-  type RecommendationJobResponse,
   type SearchJobResponse,
 } from "./hooks/useAsyncJobs";
 import { useAppUpdate } from "./hooks/useAppUpdate";
@@ -89,13 +88,9 @@ function App() {
   const [jobId, setJobId] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchJobId, setSearchJobId] = useState("");
-  const [recommendationLoading, setRecommendationLoading] = useState(false);
-  const [recommendationJobId, setRecommendationJobId] = useState("");
-  const [recommendationBootstrapped, setRecommendationBootstrapped] = useState(false);
   const [activeView, setActiveView] = useState<ActiveView>("search");
   const [downloadedLibrarySongs, setDownloadedLibrarySongs] = useState<Song[]>([]);
   const [downloadedSongs, setDownloadedSongs] = useState<Song[]>([]);
-  const [recommendedSongs, setRecommendedSongs] = useState<Song[]>([]);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const currentSongRef = useRef<Song | null>(null);
   const [lyricsDisplayMode, setLyricsDisplayMode] = useState<LyricsDisplayMode>(readStoredLyricsDisplayMode);
@@ -103,7 +98,6 @@ function App() {
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationProgressPercent, setTranslationProgressPercent] = useState(0);
   const [translationVisible, setTranslationVisible] = useState(true);
-  const [lyricShiftSec, setLyricShiftSec] = useState(0);
   const [translateProvider, setTranslateProvider] = useState<TranslateProvider>(readStoredTranslateProvider);
   const [showFpsDebug, setShowFpsDebug] = useState(readStoredShowFpsDebug);
   const [showSourceColumns, setShowSourceColumns] = useState(false);
@@ -112,6 +106,8 @@ function App() {
   );
   /** 窄屏下侧栏抽屉：默认收起，展开时曲库区域压暗 */
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
+  /** 宽屏时保留一条紧凑导航轨，便于随时重新展开侧栏。 */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const lyricsAbortRef = useRef<AbortController | null>(null);
   const translationAbortRef = useRef<AbortController | null>(null);
   const translationTaskActiveRef = useRef(false);
@@ -119,8 +115,8 @@ function App() {
   const translationRequestSeqRef = useRef(0);
   const visibleSongs = useMemo(
     () =>
-      activeView === "recommendations" ? recommendedSongs : activeView === "search" ? songs : activeView === "downloaded" ? downloadedSongs : [],
-    [activeView, downloadedSongs, recommendedSongs, songs],
+      activeView === "search" ? songs : activeView === "downloaded" ? downloadedSongs : [],
+    [activeView, downloadedSongs, songs],
   );
   const audioEffects = useAudioEffects(activeView === "settings");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -146,19 +142,14 @@ function App() {
     searchSubmitLockRef,
     downloadToastDismissedRef,
     cancelSearchPoll,
-    cancelRecommendationPoll,
   } = useAsyncJobs({
     jobId,
     setJobId,
     searchJobId,
     setSearchJobId,
-    recommendationJobId,
-    setRecommendationJobId,
     setSongs,
-    setRecommendedSongs,
     setSelectedIndexes,
     setLoading,
-    setRecommendationLoading,
   });
   const {
     lyrics,
@@ -209,15 +200,6 @@ function App() {
   useEffect(() => {
     currentSongRef.current = currentSong;
   }, [currentSong]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setRecommendationBootstrapped(false);
-      setRecommendationJobId("");
-      setRecommendedSongs([]);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [saveDir]);
 
   useEffect(() => {
     const mq = window.matchMedia(NARROW_LAYOUT_QUERY);
@@ -332,10 +314,6 @@ function App() {
 
   async function onSearch() {
     if (activeView === "settings") return;
-    if (activeView === "recommendations") {
-      await loadRecommendations();
-      return;
-    }
     if (searchSubmitLockRef.current) return;
     if (activeView === "downloaded") {
       searchSubmitLockRef.current = true;
@@ -410,61 +388,6 @@ function App() {
       changeActiveView("downloaded");
     } catch {
       /* keep current local list */
-    }
-  }
-
-  const loadCurrentRecommendations = useCallback(async () => {
-    if (recommendationJobId) return;
-    try {
-      const { data } = await requestJson<RecommendationJobResponse>("/api/recommendations/current", { timeoutMs: 8_000 });
-      if (data.status === "finished") {
-        setRecommendedSongs(data.songs ?? []);
-        setRecommendationLoading(false);
-        setRecommendationBootstrapped(true);
-        return;
-      }
-      if (data.status === "running" || data.status === "pending") {
-        setRecommendationJobId(data.job_id || "");
-        setRecommendationLoading(true);
-        setRecommendationBootstrapped(true);
-        return;
-      }
-      if (data.status === "idle") {
-        setRecommendationBootstrapped(true);
-      }
-    } catch {
-      /* recommendations are optional */
-    }
-  }, [recommendationJobId]);
-
-  useEffect(() => {
-    if (activeView === "recommendations" && selectedSources.length > 0 && saveDir) {
-      if (recommendationBootstrapped) return;
-      const timer = window.setTimeout(() => {
-        void loadCurrentRecommendations();
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [activeView, loadCurrentRecommendations, recommendationBootstrapped, saveDir, selectedSources.length]);
-
-  async function loadRecommendations() {
-    setRecommendationLoading(true);
-    cancelRecommendationPoll();
-    try {
-      const { data } = await requestJson<RecommendationJobResponse>("/api/recommendations?force=true", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          selected_sources: selectedSources,
-          limit,
-          save_dir: saveDir,
-        }),
-        timeoutMs: 15_000,
-      });
-      setRecommendationJobId(data.job_id || "");
-      setRecommendationBootstrapped(true);
-    } catch {
-      setRecommendationLoading(false);
     }
   }
 
@@ -605,7 +528,6 @@ function App() {
     currentSong,
     currentSongRef,
     setCurrentSong,
-    setLyricShiftSec,
     cancelLyricsRequests,
     resetTranslationState,
     loadLyrics,
@@ -734,31 +656,6 @@ function App() {
     await translateCurrentLyrics();
   }
 
-  const canShiftCurrentLocalLyrics = useMemo(() => {
-    if (!currentSong) return false;
-    const lyricPath = currentSong.lyric_path || (currentSong.lrc && !currentSong.lrc.startsWith("http") ? currentSong.lrc : "");
-    return Boolean(lyricPath && lyricPath.toLowerCase().endsWith(".lrc"));
-  }, [currentSong]);
-
-  async function shiftCurrentLocalLyrics(deltaSec: number) {
-    if (!currentSong || !canShiftCurrentLocalLyrics) return;
-    const lyricPath = currentSong.lyric_path || (currentSong.lrc && !currentSong.lrc.startsWith("http") ? currentSong.lrc : "");
-    if (!lyricPath) return;
-    try {
-      await requestJson("/api/lyrics/shift", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyric_path: lyricPath, delta_sec: deltaSec }),
-        timeoutMs: 10_000,
-      });
-      const nextShift = Number((lyricShiftSec + deltaSec).toFixed(1));
-      setLyricShiftSec(nextShift);
-      await loadLyrics(currentSong, lyricsHaveTranslations && translationVisible);
-    } catch {
-      console.warn("调整歌词时间失败");
-    }
-  }
-
   async function toggleProAudioTools(enabled: boolean) {
     audioEffects.setSettings({ ...audioEffects.settings, proToolsEnabled: enabled });
     if (!enabled) return;
@@ -786,13 +683,11 @@ function App() {
 
   const selectedCount = useMemo(() => selectedIndexes.size, [selectedIndexes]);
   const heroTitle =
-    activeView === "recommendations" ? "推荐" : activeView === "search" ? "在线搜索" : activeView === "downloaded" ? "本地音乐库" : "设置";
+    activeView === "search" ? "在线搜索" : activeView === "downloaded" ? "本地音乐库" : "设置";
   const heroDescription =
     activeView === "settings"
       ? "应用偏好与歌词展示模式；后续可在此扩展更多选项。"
-      : activeView === "recommendations"
-        ? "基于本地音乐库生成在线推荐；可直接试听或下载。"
-        : "搜索来源仅用于在线搜索，本地库不区分来源。";
+      : "搜索来源仅用于在线搜索，本地库不区分来源。";
   const currentLyricText =
     activeLyricIndex >= 0 && activeLyricIndex < lyrics.length ? (lyrics[activeLyricIndex]?.text || "").trim() : "";
   const currentLyricTranslation =
@@ -819,6 +714,7 @@ function App() {
   const shellClassName =
     "shell" +
     (isNarrowViewport ? " shell-narrow" : "") +
+    (!isNarrowViewport && sidebarCollapsed ? " sidebar-collapsed" : "") +
     (isNarrowViewport && narrowSidebarOpen ? " narrow-sidebar-open" : "");
   return (
     <div className={shellClassName}>
@@ -826,6 +722,7 @@ function App() {
         activeView={activeView}
         isNarrowViewport={isNarrowViewport}
         narrowSidebarOpen={narrowSidebarOpen}
+        collapsed={sidebarCollapsed}
         sources={sources}
         selectedSources={selectedSources}
         saveDir={saveDir}
@@ -833,6 +730,7 @@ function App() {
         onSetActiveView={changeActiveView}
         onLoadDownloadedSongs={() => void loadDownloadedSongs()}
         onCloseNarrowSidebar={() => setNarrowSidebarOpen(false)}
+        onToggleCollapsed={() => setSidebarCollapsed((previous) => !previous)}
         onSaveDirChange={setSaveDir}
         onLimitChange={setLimit}
         onToggleSource={toggleSource}
@@ -927,7 +825,7 @@ function App() {
               <SearchToolbar
                 activeView={activeView}
                 keyword={keyword}
-                loading={activeView === "recommendations" ? recommendationLoading : loading}
+                loading={loading}
                 selectedCount={selectedCount}
                 hasJob={!!jobId}
                 onKeywordChange={setKeyword}
@@ -1025,9 +923,6 @@ function App() {
         onCycleRepeatMode={cycleRepeatMode}
         onVolumeChange={handleVolumeChange}
         onToggleChineseTranslation={() => void toggleChineseTranslation()}
-        lyricShiftEnabled={canShiftCurrentLocalLyrics}
-        lyricShiftSec={lyricShiftSec}
-        onShiftLyricTiming={(deltaSec) => void shiftCurrentLocalLyrics(deltaSec)}
         onSeekToTime={seekToTime}
         onRegisterLyricRef={registerLyricRef}
       />

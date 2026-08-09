@@ -142,11 +142,6 @@ const SongRow = memo(function SongRow({
           <span className="song-meta-line">
             <span>{artists}</span>
             {song.duration && <span>{song.duration}</span>}
-            {activeView === "recommendations" && song.is_recommendation && (
-              <span className="recommendation-badge" title={song.recommendation_reason || "推荐歌曲"}>
-                推荐
-              </span>
-            )}
           </span>
         </span>
       </span>
@@ -156,7 +151,6 @@ const SongRow = memo(function SongRow({
       {showSourceColumns && activeView !== "downloaded" && (
         <span className="source-cell">
           {song.source || "-"}
-          {activeView === "recommendations" && song.is_recommendation && song.recommendation_source ? ` · ${song.recommendation_source}` : ""}
         </span>
       )}
       {showSourceColumns && (
@@ -199,36 +193,6 @@ const SongRow = memo(function SongRow({
     </div>
   );
 });
-
-function RecommendationCards({ songs, onPlaySong }: { songs: Song[]; onPlaySong: (song: Song) => void }) {
-  const featured = songs.slice(0, 5);
-  if (featured.length === 0) return null;
-  return (
-    <section className="recommendation-cards" aria-label="推荐播放">
-      {featured.map((song, index) => {
-        const cover = getCoverUrl(song);
-        return (
-          <button
-            type="button"
-            className="recommendation-card"
-            key={`${song.song_id || song.file_path || song.song_name}-card-${index}`}
-            onClick={() => onPlaySong(song)}
-            disabled={!song.download_url && !song.stream_url}
-          >
-            <span className="recommendation-card-art">
-              {cover ? <img src={cover} alt="" /> : <span className="recommendation-card-cover">♪</span>}
-              <span className="recommendation-card-play">
-                <IoPlay aria-hidden />
-              </span>
-            </span>
-            <strong>{song.song_name || "-"}</strong>
-            <span>{getSongArtists(song)}</span>
-          </button>
-        );
-      })}
-    </section>
-  );
-}
 
 function TableBlock({
   title,
@@ -393,25 +357,6 @@ export function SongTable({ activeView, songs, selectedIndexes, showSourceColumn
         onPlaySong={onPlaySong}
         onDeleteSong={onDeleteSong}
       />
-    );
-  }
-
-  if (activeView !== "search") {
-    const visibleRows = songs.map((song, index) => ({ song, index }));
-    return (
-      <>
-        {activeView === "recommendations" && <RecommendationCards songs={songs} onPlaySong={onPlaySong} />}
-        <TableBlock
-          title={activeView === "recommendations" ? "推荐列表" : undefined}
-          activeView={activeView}
-          songs={visibleRows}
-          selectedIndexes={selectedIndexes}
-          showSourceColumns={showSourceColumns}
-          onToggleSong={onToggleSong}
-          onPlaySong={onPlaySong}
-          onDeleteSong={onDeleteSong}
-        />
-      </>
     );
   }
 
