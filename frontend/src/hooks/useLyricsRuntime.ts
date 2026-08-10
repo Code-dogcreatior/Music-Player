@@ -22,6 +22,7 @@ type UseLyricsRuntimeOptions = {
   audioRef: RefObject<HTMLAudioElement | null>;
   isOverlayMounted: boolean;
   isPlayerExpanded: boolean;
+  lyricsPanelVisible: boolean;
   lyricsDisplayMode: LyricsDisplayMode;
   translationVisible: boolean;
   showFpsDebug: boolean;
@@ -51,6 +52,7 @@ export function useLyricsRuntime({
   audioRef,
   isOverlayMounted,
   isPlayerExpanded,
+  lyricsPanelVisible,
   lyricsDisplayMode,
   translationVisible,
   showFpsDebug,
@@ -172,7 +174,7 @@ export function useLyricsRuntime({
 
   const measureLyricLayout = useCallback(() => {
     const container = lyricsContainerRef.current;
-    if (!container) return false;
+    if (!container || container.clientHeight <= 0) return false;
     lyricsViewportHeightRef.current = container.clientHeight;
     const nextCenters: Record<number, number> = {};
     Object.entries(lyricsRefs.current).forEach(([key, element]) => {
@@ -180,7 +182,7 @@ export function useLyricsRuntime({
       nextCenters[Number(key)] = element.offsetTop + element.offsetHeight / 2;
     });
     lyricLineCentersRef.current = nextCenters;
-    return true;
+    return Object.keys(nextCenters).length > 0;
   }, []);
 
   const queueLyricLayoutMeasure = useCallback(() => {
@@ -192,6 +194,74 @@ export function useLyricsRuntime({
       measureLyricLayout();
     });
   }, [measureLyricLayout]);
+
+  const scrollActiveLyricIntoView = useCallback(
+    (options?: { instant?: boolean; forceMeasure?: boolean }) => {
+      const container = lyricsContainerRef.current;
+      const inner = lyricsInnerRef.current;
+      const idx = activeLyricIndexRef.current;
+      if (!container || !inner) return false;
+      if (idx < 0) {
+        inner.style.transition = "none";
+        inner.style.transform = "translate3d(0, 0, 0)";
+        return true;
+      }
+      if (options?.forceMeasure || typeof lyricLineCentersRef.current[idx] !== "number") {
+        if (!measureLyricLayout()) return false;
+      }
+      const viewportHeight = lyricsViewportHeightRef.current || container.clientHeight;
+      if (viewportHeight <= 0) return false;
+      const activeCenter = lyricLineCentersRef.current[idx];
+      if (typeof activeCenter !== "number") return false;
+      const desiredY = viewportHeight / 2 - activeCenter;
+
+      if (lyricScrollRafRef.current) {
+        cancelAnimationFrame(lyricScrollRafRef.current);
+        lyricScrollRafRef.current = null;
+      }
+
+      const instant = options?.instant === true;
+      const startMs = performance.now();
+      lyricScrollStartMsRef.current = startMs;
+      scrollLastTickMsRef.current = startMs;
+      const durationMs = instant ? 0 : lyricsDisplayModeRef.current === "performance" ? 420 : 520;
+      const easing = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+      if (instant) {
+        inner.style.transition = "none";
+        inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
+        void inner.offsetHeight;
+        return true;
+      }
+
+      inner.style.transition = `transform ${durationMs}ms ${easing}`;
+      inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
+
+      const tick = (now: number) => {
+        const perf = perfRef.current;
+        const tickDelta = now - scrollLastTickMsRef.current;
+        scrollLastTickMsRef.current = now;
+        perf.frameCount += 1;
+        perf.frameDeltaSumMs += tickDelta;
+        perf.maxFrameDeltaMs = Math.max(perf.maxFrameDeltaMs, tickDelta);
+        if (tickDelta > 30) perf.droppedFrameCount += 1;
+
+        const progress = Math.min(1, (now - startMs) / durationMs);
+        if (progress >= 1) {
+          const cost = performance.now() - lyricScrollStartMsRef.current;
+          perf.scrollCount += 1;
+          perf.scrollDurationSumMs += cost;
+          perf.scrollDurationMaxMs = Math.max(perf.scrollDurationMaxMs, cost);
+          lyricScrollRafRef.current = null;
+          return;
+        }
+        lyricScrollRafRef.current = requestAnimationFrame(tick);
+      };
+      lyricScrollRafRef.current = requestAnimationFrame(tick);
+      return true;
+    },
+    [measureLyricLayout],
+  );
 
   const cancelLyricSchedule = useCallback(() => {
     if (lyricSwitchTimerRef.current !== null) {
@@ -419,58 +489,15 @@ export function useLyricsRuntime({
 
   useEffect(() => {
     activeLyricIndexRef.current = activeLyricIndex;
-    const container = lyricsContainerRef.current;
-    const inner = lyricsInnerRef.current;
-    if (!container || !inner) return;
-
-    if (activeLyricIndex < 0) {
-      inner.style.transition = "none";
-      inner.style.transform = "translate3d(0, 0, 0)";
-      return;
-    }
-    const viewportHeight = lyricsViewportHeightRef.current || container.clientHeight;
-    const activeCenter = lyricLineCentersRef.current[activeLyricIndex];
-    if (typeof activeCenter !== "number") {
+    if (!lyricsPanelVisible || !isPlayerExpanded) return;
+    if (!scrollActiveLyricIntoView({ forceMeasure: true })) {
       queueLyricLayoutMeasure();
-      return;
+      const retryId = window.setTimeout(() => {
+        scrollActiveLyricIntoView({ forceMeasure: true });
+      }, 32);
+      return () => window.clearTimeout(retryId);
     }
-    const desiredY = viewportHeight / 2 - activeCenter;
-
-    if (lyricScrollRafRef.current) {
-      cancelAnimationFrame(lyricScrollRafRef.current);
-      lyricScrollRafRef.current = null;
-    }
-    const startMs = performance.now();
-    lyricScrollStartMsRef.current = startMs;
-    scrollLastTickMsRef.current = startMs;
-    const durationMs = lyricsDisplayModeRef.current === "performance" ? 420 : 520;
-    const easing = "cubic-bezier(0.16, 1, 0.3, 1)";
-
-    inner.style.transition = `transform ${durationMs}ms ${easing}`;
-    inner.style.transform = `translate3d(0, ${desiredY}px, 0)`;
-
-    const tick = (now: number) => {
-      const perf = perfRef.current;
-      const tickDelta = now - scrollLastTickMsRef.current;
-      scrollLastTickMsRef.current = now;
-      perf.frameCount += 1;
-      perf.frameDeltaSumMs += tickDelta;
-      perf.maxFrameDeltaMs = Math.max(perf.maxFrameDeltaMs, tickDelta);
-      if (tickDelta > 30) perf.droppedFrameCount += 1;
-
-      const progress = Math.min(1, (now - startMs) / durationMs);
-      if (progress >= 1) {
-        const cost = performance.now() - lyricScrollStartMsRef.current;
-        perf.scrollCount += 1;
-        perf.scrollDurationSumMs += cost;
-        perf.scrollDurationMaxMs = Math.max(perf.scrollDurationMaxMs, cost);
-        lyricScrollRafRef.current = null;
-        return;
-      }
-      lyricScrollRafRef.current = requestAnimationFrame(tick);
-    };
-    lyricScrollRafRef.current = requestAnimationFrame(tick);
-  }, [activeLyricIndex, isPlayerExpanded, queueLyricLayoutMeasure]);
+  }, [activeLyricIndex, isPlayerExpanded, lyricsPanelVisible, queueLyricLayoutMeasure, scrollActiveLyricIntoView]);
 
   useEffect(() => {
     lyricsRef.current = lyrics;
@@ -491,6 +518,35 @@ export function useLyricsRuntime({
       setActiveLyricIndex(idx);
     }
   }, [audioRef, isPlayerExpanded]);
+
+  useEffect(() => {
+    if (!isOverlayMounted || !isPlayerExpanded || !lyricsPanelVisible) return;
+
+    const list = lyricsRef.current;
+    const audio = audioRef.current;
+    if (audio && list.length) {
+      const idx = findActiveLyricIndexByTime((audio.currentTime || 0) + LYRICS_SWITCH_LEAD_SEC, list);
+      if (idx !== activeLyricIndexRef.current) {
+        setActiveLyricIndex(idx);
+      }
+    }
+
+    let cancelled = false;
+    let outerRaf = 0;
+    let innerRaf = 0;
+    outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        if (cancelled) return;
+        scrollActiveLyricIntoView({ instant: true, forceMeasure: true });
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
+  }, [audioRef, isOverlayMounted, isPlayerExpanded, lyricsPanelVisible, scrollActiveLyricIntoView]);
 
   useEffect(() => {
     return () => {

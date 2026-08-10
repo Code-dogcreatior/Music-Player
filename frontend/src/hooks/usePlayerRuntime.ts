@@ -361,6 +361,7 @@ export function usePlayerRuntime({
     listLoop,
     loopOne,
     volume,
+    getCurrentQueueAndIndex,
     ensureAudioEffectsAttached,
     releaseCurrentAudio,
     clearCurrentPlaybackState,

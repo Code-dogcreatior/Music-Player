@@ -2,6 +2,7 @@ import type { CSSProperties, PointerEvent, RefObject } from "react";
 import {
   IoClose,
   IoLanguage,
+  IoList,
   IoPause,
   IoPlay,
   IoPlaySkipBack,
@@ -14,6 +15,40 @@ import { RepeatIcon, RepeatOneIcon } from "./RepeatOneIcon";
 import { getSongArtists } from "../songUtils";
 import type { LyricLine as LyricLineType, PlayMode, Song } from "../types";
 import { LyricLine } from "./LyricLine";
+import { PlayQueueList } from "./PlayQueueList";
+
+export type OverlayRightPanel = "lyrics" | "playlist";
+
+function LyricsGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="none">
+      <rect
+        x="3.4"
+        y="2.6"
+        width="13"
+        height="15.4"
+        rx="2.2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        opacity="0.45"
+      />
+      <rect
+        x="7.6"
+        y="6"
+        width="13"
+        height="15.4"
+        rx="2.2"
+        fill="currentColor"
+        fillOpacity="0.08"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <g transform="rotate(180 14.1 13.7)" fill="currentColor">
+        <path d="M11.1 16.6c-1.15 0-2.05-.9-2.05-2.05 0-1.7 1.3-3.05 3.35-3.95l.55 1.05c-1.2.5-1.85 1.2-1.85 2 .15-.05.35-.1.55-.1.9 0 1.6.65 1.6 1.55 0 .9-.7 1.5-1.55 1.5h-.6zm4.9 0c-1.15 0-2.05-.9-2.05-2.05 0-1.7 1.3-3.05 3.35-3.95l.55 1.05c-1.2.5-1.85 1.2-1.85 2 .15-.05.35-.1.55-.1.9 0 1.6.65 1.6 1.55 0 .9-.7 1.5-1.55 1.5h-.6z" />
+      </g>
+    </svg>
+  );
+}
 
 type FullscreenPlayerProps = {
   mounted: boolean;
@@ -21,6 +56,8 @@ type FullscreenPlayerProps = {
   overlayClassName: string;
   overlayStyle?: CSSProperties;
   currentSong: Song | null;
+  playQueue: Song[];
+  rightPanel: OverlayRightPanel;
   coverUrl: string;
   currentLyricText: string;
   currentLyricTranslation: string;
@@ -48,6 +85,7 @@ type FullscreenPlayerProps = {
   fpsDebugHudRef: RefObject<HTMLDivElement | null>;
   formatTime: (sec: number) => string;
   onClose: () => void;
+  onRightPanelChange: (panel: OverlayRightPanel) => void;
   onSeekByProgressClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   onTogglePlayMode: () => void;
   onPlayPrev: () => void;
@@ -57,6 +95,7 @@ type FullscreenPlayerProps = {
   onVolumeChange: (value: number) => void;
   onToggleChineseTranslation: () => void;
   onSeekToTime: (timeSec: number) => void;
+  onPlaySong: (song: Song) => void;
   onRegisterLyricRef: (index: number, el: HTMLDivElement | null) => void;
 };
 
@@ -66,6 +105,8 @@ export function FullscreenPlayer({
   overlayClassName,
   overlayStyle,
   currentSong,
+  playQueue,
+  rightPanel,
   coverUrl,
   currentLyricText,
   currentLyricTranslation,
@@ -93,6 +134,7 @@ export function FullscreenPlayer({
   fpsDebugHudRef,
   formatTime,
   onClose,
+  onRightPanelChange,
   onSeekByProgressClick,
   onTogglePlayMode,
   onPlayPrev,
@@ -102,6 +144,7 @@ export function FullscreenPlayer({
   onVolumeChange,
   onToggleChineseTranslation,
   onSeekToTime,
+  onPlaySong,
   onRegisterLyricRef,
 }: FullscreenPlayerProps) {
   if (!mounted) return null;
@@ -143,8 +186,10 @@ export function FullscreenPlayer({
     }
   };
 
+  const showingPlaylist = rightPanel === "playlist";
+
   return (
-    <div className={`${overlayClassName} ${entered ? "overlay-entered" : ""}`} style={overlayStyle}>
+    <div className={`${overlayClassName} ${entered ? "overlay-entered" : ""}${showingPlaylist ? " playlist-open" : ""}`} style={overlayStyle}>
       <div className="overlay-layout">
         <div className="overlay-left">
           <button className="overlay-close-btn" onClick={onClose}>
@@ -158,9 +203,21 @@ export function FullscreenPlayer({
             <p>{currentSong ? getSongArtists(currentSong) : "选择歌曲后可试听"}</p>
             {currentSong?.album && <p className="overlay-album">{currentSong.album}</p>}
           </div>
-          <div className="overlay-mobile-caption">
-            <span>{currentLyricText || "..."}</span>
-            {currentLyricTranslation && <small>{currentLyricTranslation}</small>}
+          <div className={`overlay-mobile-caption${showingPlaylist ? " playlist-mode" : ""}`}>
+            {showingPlaylist ? (
+              <div className="overlay-mobile-playlist">
+                <div className="overlay-playlist-header">
+                  <strong>播放列表</strong>
+                  <span>{playQueue.length} 首</span>
+                </div>
+                <PlayQueueList songs={playQueue} currentSong={currentSong} variant="dark" onPlaySong={onPlaySong} />
+              </div>
+            ) : (
+              <>
+                <span>{currentLyricText || "..."}</span>
+                {currentLyricTranslation && <small>{currentLyricTranslation}</small>}
+              </>
+            )}
           </div>
           <div className="overlay-progress">
             <div
@@ -223,10 +280,10 @@ export function FullscreenPlayer({
               onPointerCancel={handleVolumePointerEnd}
             />
           </div>
-          <div className="overlay-translate-slot">
+          <div className="overlay-extra-actions">
             {translationOffered && (
               <button
-                className={`${translationVisible && lyricsHaveTranslations ? "overlay-translate-btn active" : "overlay-translate-btn"}${
+                className={`${translationVisible && lyricsHaveTranslations ? "overlay-action-btn active" : "overlay-action-btn"}${
                   translationLoading ? " loading" : ""
                 }`}
                 type="button"
@@ -247,12 +304,48 @@ export function FullscreenPlayer({
                 )}
               </button>
             )}
+            <button
+              type="button"
+              className={`overlay-action-btn${rightPanel === "lyrics" ? " active" : ""}`}
+              title="歌词"
+              aria-label="歌词"
+              aria-pressed={rightPanel === "lyrics"}
+              onClick={() => onRightPanelChange("lyrics")}
+            >
+              <LyricsGlyph />
+            </button>
+            <button
+              type="button"
+              className={`overlay-action-btn queue-btn${rightPanel === "playlist" ? " active" : ""}`}
+              title="播放列表"
+              aria-label="播放列表"
+              aria-pressed={rightPanel === "playlist"}
+              onClick={() => onRightPanelChange("playlist")}
+            >
+              <IoList aria-hidden />
+            </button>
           </div>
         </div>
-        <div className="overlay-right">
-          <div className="overlay-lyrics-list" ref={lyricsContainerRef}>
+        <div className={`overlay-right${showingPlaylist ? " playlist-mode" : ""}`}>
+          <div
+            className={`overlay-playlist-panel${showingPlaylist ? "" : " is-hidden"}`}
+            aria-hidden={!showingPlaylist}
+          >
+            <div className="overlay-playlist-header">
+              <div>
+                <strong>播放列表</strong>
+                <span>{playQueue.length} 首</span>
+              </div>
+            </div>
+            <PlayQueueList songs={playQueue} currentSong={currentSong} variant="dark" onPlaySong={onPlaySong} />
+          </div>
+          <div
+            className={`overlay-lyrics-list${showingPlaylist ? " is-hidden" : ""}${lyrics.length === 0 ? " is-empty" : ""}`}
+            ref={lyricsContainerRef}
+            aria-hidden={showingPlaylist}
+          >
             {lyrics.length === 0 ? (
-              <p className="empty">当前歌曲暂无 LRC 歌词</p>
+              <p className="overlay-lyrics-empty">当前歌曲暂无 LRC 歌词</p>
             ) : (
               <div className="overlay-lyrics-inner" ref={lyricsInnerRef}>
                 {lyrics.map((line, idx) => (

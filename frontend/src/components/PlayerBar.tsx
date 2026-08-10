@@ -1,12 +1,14 @@
-import type { CSSProperties, PointerEvent, RefObject } from "react";
-import { IoPause, IoPlay, IoPlaySkipBack, IoPlaySkipForward, IoVolumeHigh } from "react-icons/io5";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type RefObject } from "react";
+import { IoList, IoPause, IoPlay, IoPlaySkipBack, IoPlaySkipForward, IoVolumeHigh } from "react-icons/io5";
 import type { Song } from "../types";
 import { getSongArtists } from "../songUtils";
+import { PlayQueueList } from "./PlayQueueList";
 
 type PlayerBarProps = {
   audioElementKey: number;
   audioRef: RefObject<HTMLAudioElement | null>;
   currentSong: Song | null;
+  playQueue: Song[];
   currentLyricText: string;
   currentTime: number;
   duration: number;
@@ -16,9 +18,11 @@ type PlayerBarProps = {
   coverUrl: string;
   formatTime: (sec: number) => string;
   onOpenFullscreen: () => void;
+  onOpenFullscreenPlaylist: () => void;
   onPlayPrev: () => void;
   onTogglePlay: () => void;
   onPlayNext: () => void;
+  onPlaySong: (song: Song) => void;
   onVolumeChange: (value: number) => void;
   onAudioPlay: () => void;
   onAudioPause: () => void;
@@ -31,6 +35,7 @@ export function PlayerBar({
   audioElementKey,
   audioRef,
   currentSong,
+  playQueue,
   currentLyricText,
   currentTime,
   duration,
@@ -40,9 +45,11 @@ export function PlayerBar({
   coverUrl,
   formatTime,
   onOpenFullscreen,
+  onOpenFullscreenPlaylist,
   onPlayPrev,
   onTogglePlay,
   onPlayNext,
+  onPlaySong,
   onVolumeChange,
   onAudioPlay,
   onAudioPause,
@@ -50,6 +57,8 @@ export function PlayerBar({
   onAudioLoadedMetadata,
   onAudioEnded,
 }: PlayerBarProps) {
+  const [queueOpen, setQueueOpen] = useState(false);
+  const queueWrapRef = useRef<HTMLDivElement | null>(null);
   const volumePercent = `${Math.max(0, Math.min(100, volume))}%`;
   const syncVolumeInput = (input: HTMLInputElement, rawValue: number) => {
     const safe = Math.max(0, Math.min(100, Math.round(rawValue)));
@@ -87,6 +96,26 @@ export function PlayerBar({
       /* best effort */
     }
   };
+
+  useEffect(() => {
+    if (!queueOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && queueWrapRef.current?.contains(target)) return;
+      setQueueOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setQueueOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [queueOpen]);
 
   return (
     <footer className="player-bar">
@@ -127,6 +156,46 @@ export function PlayerBar({
         </button>
       </div>
       <div className="player-right">
+        <div className="player-queue-wrap" ref={queueWrapRef}>
+          <button
+            className={`player-queue-btn${queueOpen ? " active" : ""}`}
+            type="button"
+            aria-label="播放列表"
+            aria-expanded={queueOpen}
+            title="播放列表"
+            onClick={() => setQueueOpen((open) => !open)}
+          >
+            <IoList aria-hidden />
+          </button>
+          {queueOpen ? (
+            <div className="player-queue-popover" role="dialog" aria-label="播放列表">
+              <div className="player-queue-header">
+                <div>
+                  <strong>播放列表</strong>
+                  <span>{playQueue.length} 首</span>
+                </div>
+                <button
+                  type="button"
+                  className="player-queue-fullscreen"
+                  onClick={() => {
+                    setQueueOpen(false);
+                    onOpenFullscreenPlaylist();
+                  }}
+                >
+                  全屏查看
+                </button>
+              </div>
+              <PlayQueueList
+                songs={playQueue}
+                currentSong={currentSong}
+                variant="light"
+                onPlaySong={(song) => {
+                  onPlaySong(song);
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
         <span className="player-time" ref={playerTimeRef}>
           {formatTime(currentTime)} / {formatTime(duration || 0)}
         </span>

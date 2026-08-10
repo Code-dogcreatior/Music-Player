@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { IoMenu } from "react-icons/io5";
 import { isAbortError, requestJson, SEARCH_TYPE_SONG } from "./api";
 import { useAudioEffects } from "./audioEffects";
-import { FullscreenPlayer } from "./components/FullscreenPlayer";
+import { FullscreenPlayer, type OverlayRightPanel } from "./components/FullscreenPlayer";
 import { PlayerBar } from "./components/PlayerBar";
 import { SearchToolbar } from "./components/SearchToolbar";
 import { SettingsPage } from "./components/SettingsPage";
@@ -108,6 +108,7 @@ function App() {
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
   /** 宽屏时保留一条紧凑导航轨，便于随时重新展开侧栏。 */
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [overlayRightPanel, setOverlayRightPanel] = useState<OverlayRightPanel>("lyrics");
   const lyricsAbortRef = useRef<AbortController | null>(null);
   const translationAbortRef = useRef<AbortController | null>(null);
   const translationTaskActiveRef = useRef(false);
@@ -131,6 +132,7 @@ function App() {
     audioRef,
     isOverlayMounted,
     isPlayerExpanded,
+    lyricsPanelVisible: overlayRightPanel === "lyrics",
     lyricsDisplayMode,
     translationVisible,
     showFpsDebug,
@@ -544,6 +546,7 @@ function App() {
     listLoop,
     loopOne,
     volume,
+    getCurrentQueueAndIndex,
     ensureAudioEffectsAttached,
     clearCurrentPlaybackState,
     playSong,
@@ -554,6 +557,16 @@ function App() {
     cycleRepeatMode,
     handleVolumeChange,
   } = playerRuntime;
+
+  const playQueue = useMemo(() => {
+    if (!currentSong) return visibleSongs.length ? visibleSongs : downloadedSongs.length ? downloadedSongs : songs;
+    return getCurrentQueueAndIndex(currentSong)?.queue ?? (visibleSongs.length ? visibleSongs : songs);
+  }, [currentSong, downloadedSongs, getCurrentQueueAndIndex, songs, visibleSongs]);
+
+  const openFullscreenPlaylist = useCallback(() => {
+    setOverlayRightPanel("playlist");
+    openFullscreenPlayer();
+  }, [openFullscreenPlayer]);
 
   async function translateCurrentLyrics() {
     if (!currentSong || translationLoading || translationTaskActiveRef.current) return;
@@ -850,6 +863,7 @@ function App() {
         audioElementKey={audioElementKey}
         audioRef={audioRef}
         currentSong={currentSong}
+        playQueue={playQueue}
         currentLyricText={currentLyricText}
         currentTime={currentTime}
         duration={duration}
@@ -859,9 +873,11 @@ function App() {
         coverUrl={overlayBgCover}
         formatTime={formatTime}
         onOpenFullscreen={openFullscreenPlayer}
+        onOpenFullscreenPlaylist={openFullscreenPlaylist}
         onPlayPrev={playPrevByMode}
         onTogglePlay={togglePlay}
         onPlayNext={playNextByMode}
+        onPlaySong={(song) => void playSong(song)}
         onVolumeChange={handleVolumeChange}
         onAudioPlay={() => {
           setIsPlaying(true);
@@ -888,6 +904,8 @@ function App() {
         overlayClassName={overlayClassName}
         overlayStyle={overlayStyle}
         currentSong={currentSong}
+        playQueue={playQueue}
+        rightPanel={overlayRightPanel}
         coverUrl={overlayBgCover}
         currentLyricText={currentLyricText}
         currentLyricTranslation={currentLyricTranslation}
@@ -915,6 +933,7 @@ function App() {
         fpsDebugHudRef={fpsDebugHudRef}
         formatTime={formatTime}
         onClose={closeFullscreenPlayer}
+        onRightPanelChange={setOverlayRightPanel}
         onSeekByProgressClick={seekByProgressClick}
         onTogglePlayMode={togglePlayMode}
         onPlayPrev={playPrevByMode}
@@ -924,6 +943,7 @@ function App() {
         onVolumeChange={handleVolumeChange}
         onToggleChineseTranslation={() => void toggleChineseTranslation()}
         onSeekToTime={seekToTime}
+        onPlaySong={(song) => void playSong(song)}
         onRegisterLyricRef={registerLyricRef}
       />
     </div>
