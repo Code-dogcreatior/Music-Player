@@ -16,6 +16,15 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 from types import MethodType
 from typing import Any
+import typing as _typing
+
+# musicdl 2.13.5+ 在多个客户端里写了 `from typing import Unpack`。
+# Unpack 是 Python 3.11 才进入标准库 typing 的，3.10 运行时会直接 ImportError。
+# 项目基线仍是 3.10.9，这里在导入 musicdl 前把 typing_extensions.Unpack 挂到 typing 上。
+if not hasattr(_typing, "Unpack"):
+    from typing_extensions import Unpack as _Unpack
+
+    _typing.Unpack = _Unpack  # type: ignore[attr-defined]
 
 # 尝试导入 musicdl
 #

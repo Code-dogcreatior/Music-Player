@@ -41,10 +41,7 @@ if ! conda env list | awk '{print $1}' | grep -qx "$BACKEND_ENV"; then
 fi
 
 echo "[2/4] Check backend dependencies..."
-echo "Updating musicdl to latest version..."
-conda run -n "$BACKEND_ENV" python -m pip install --upgrade musicdl \
-  -i https://pypi.tuna.tsinghua.edu.cn/simple \
-  --trusted-host pypi.tuna.tsinghua.edu.cn >/dev/null 2>&1 || true
+echo "Skip upgrading musicdl; using pinned version in requirements.txt"
 
 if ! conda run -n "$BACKEND_ENV" python -c "import fastapi, uvicorn, musicdl, musicbrainzngs, pylistenbrainz" >/dev/null 2>&1; then
   conda run -n "$BACKEND_ENV" python -m pip install -r "$ROOT/backend/requirements.txt" \

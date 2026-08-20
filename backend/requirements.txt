@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-musicdl
+musicdl==2.13.6
 requests
 pyinstaller
 mutagen

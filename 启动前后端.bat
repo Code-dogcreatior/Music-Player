@@ -20,8 +20,7 @@ for %%P in (8000 5173) do (
 )
 
 echo [1/3] Check backend dependencies...
-echo Updating musicdl to latest version...
-"%PYTHON_EXE%" -m pip install --upgrade musicdl >nul 2>nul
+echo Skip upgrading musicdl; using pinned version in requirements.txt
 
 "%PYTHON_EXE%" -m pip show fastapi >nul 2>nul
 if errorlevel 1 (
