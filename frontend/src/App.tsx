@@ -716,12 +716,17 @@ function App() {
   const overlayStyle: CSSProperties | undefined = overlayBgCover
     ? ({
         ["--overlay-cover-url" as string]: `url("${overlayBgCover}")`,
-        ["--overlay-blurred-cover-url" as string]: blurredOverlayCover ? `url("${blurredOverlayCover}")` : `url("${overlayBgCover}")`,
+        // Only point at the pre-blurred bitmap when ready. Falling back to the
+        // sharp cover here made full-blood posters intermittently crisp.
+        ...(blurredOverlayCover
+          ? { ["--overlay-blurred-cover-url" as string]: `url("${blurredOverlayCover}")` }
+          : {}),
       } as CSSProperties)
     : undefined;
   const lyricsLowFx = lyricsDisplayMode === "performance";
+  const overlayNeedsCssBlur = useCssOverlayBlur || Boolean(overlayBgCover && !blurredOverlayCover);
   const overlayClassName = `${overlayBgCover ? "player-overlay has-cover" : "player-overlay"}${lyricsLowFx ? " low-perf" : ""}${
-    useCssOverlayBlur ? " css-cover-blur" : ""
+    overlayNeedsCssBlur ? " css-cover-blur" : ""
   }${areOverlayEffectsReady ? " overlay-effects-ready" : ""}`;
 
   const shellClassName =

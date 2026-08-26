@@ -1735,15 +1735,12 @@ body::-webkit-scrollbar {
 }
 
 /* Keep entry/exit on compositor-friendly transform and opacity work. Per-line
-   filters and the legacy CSS background blur are restored after entry settles. */
+   lyric filters are restored after entry settles. Background CSS blur stays on
+   so the poster never flashes sharp while the canvas bitmap is still cooking. */
 .player-overlay:not(.overlay-effects-ready) .overlay-lyric-line {
   filter: none !important;
   text-shadow: none !important;
   transition: none;
-}
-
-.player-overlay:not(.overlay-effects-ready).has-cover.css-cover-blur::before {
-  filter: none;
 }
 
 

@@ -52,31 +52,28 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
   useEffect(() => {
     let cancelled = false;
     const canvasSrc = coverUrlForCanvasBlur(coverUrl);
-    blurredCoverObjectUrlRef.current = "";
-    const resetRaf = requestAnimationFrame(() => {
-      if (cancelled) return;
+
+    if (!coverUrl || !canvasSrc) {
+      blurredCoverObjectUrlRef.current = "";
       setBlurredOverlayCover("");
       setUseCssOverlayBlur(false);
-    });
-    if (!coverUrl || !canvasSrc) {
       Object.values(blurredCoverCacheRef.current).forEach((url) => URL.revokeObjectURL(url));
       blurredCoverCacheRef.current = {};
       blurredCoverCacheOrderRef.current = [];
       return () => {
         cancelled = true;
-        cancelAnimationFrame(resetRaf);
       };
     }
+
     if (!supportsCanvasBlurFilter()) {
-      const fallbackRaf = requestAnimationFrame(() => {
-        if (!cancelled) setUseCssOverlayBlur(true);
-      });
+      // Canvas filter unsupported: keep CSS blur on the original cover.
+      setBlurredOverlayCover("");
+      setUseCssOverlayBlur(true);
       return () => {
         cancelled = true;
-        cancelAnimationFrame(resetRaf);
-        cancelAnimationFrame(fallbackRaf);
       };
     }
+
     const cached = blurredCoverCacheRef.current[coverUrl];
     if (cached) {
       blurredCoverObjectUrlRef.current = cached;
@@ -84,15 +81,17 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
         ...blurredCoverCacheOrderRef.current.filter((key) => key !== coverUrl),
         coverUrl,
       ];
-      const cachedRaf = requestAnimationFrame(() => {
-        if (!cancelled) setBlurredOverlayCover(cached);
-      });
+      setBlurredOverlayCover(cached);
+      setUseCssOverlayBlur(false);
       return () => {
         cancelled = true;
-        cancelAnimationFrame(resetRaf);
-        cancelAnimationFrame(cachedRaf);
       };
     }
+
+    // Pre-blur not ready yet: drop the previous song's bitmap and use CSS blur
+    // on the new sharp cover so the poster never flashes crisp (or wrong) art.
+    setBlurredOverlayCover("");
+    setUseCssOverlayBlur(true);
 
     const image = new Image();
     image.crossOrigin = "anonymous";
@@ -104,7 +103,10 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        setUseCssOverlayBlur(true);
+        return;
+      }
       const sourceSize = Math.min(image.naturalWidth || image.width, image.naturalHeight || image.height);
       const sx = ((image.naturalWidth || image.width) - sourceSize) / 2;
       const sy = ((image.naturalHeight || image.height) - sourceSize) / 2;
@@ -131,6 +133,7 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
             }
             blurredCoverObjectUrlRef.current = objectUrl;
             setBlurredOverlayCover(objectUrl);
+            setUseCssOverlayBlur(false);
           },
           "image/jpeg",
           0.84
@@ -152,7 +155,6 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
       cancelled = true;
       image.onload = null;
       image.onerror = null;
-      cancelAnimationFrame(resetRaf);
     };
   }, [coverUrl]);
 
