@@ -52,11 +52,17 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
   useEffect(() => {
     let cancelled = false;
     const canvasSrc = coverUrlForCanvasBlur(coverUrl);
+    const applyOverlay = (cover: string, cssBlur: boolean) => {
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setBlurredOverlayCover(cover);
+        setUseCssOverlayBlur(cssBlur);
+      });
+    };
 
     if (!coverUrl || !canvasSrc) {
       blurredCoverObjectUrlRef.current = "";
-      setBlurredOverlayCover("");
-      setUseCssOverlayBlur(false);
+      applyOverlay("", false);
       Object.values(blurredCoverCacheRef.current).forEach((url) => URL.revokeObjectURL(url));
       blurredCoverCacheRef.current = {};
       blurredCoverCacheOrderRef.current = [];
@@ -67,8 +73,7 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
 
     if (!supportsCanvasBlurFilter()) {
       // Canvas filter unsupported: keep CSS blur on the original cover.
-      setBlurredOverlayCover("");
-      setUseCssOverlayBlur(true);
+      applyOverlay("", true);
       return () => {
         cancelled = true;
       };
@@ -81,8 +86,7 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
         ...blurredCoverCacheOrderRef.current.filter((key) => key !== coverUrl),
         coverUrl,
       ];
-      setBlurredOverlayCover(cached);
-      setUseCssOverlayBlur(false);
+      applyOverlay(cached, false);
       return () => {
         cancelled = true;
       };
@@ -90,8 +94,7 @@ export function useBlurredOverlayCover(coverUrl: string): { blurredOverlayCover:
 
     // Pre-blur not ready yet: drop the previous song's bitmap and use CSS blur
     // on the new sharp cover so the poster never flashes crisp (or wrong) art.
-    setBlurredOverlayCover("");
-    setUseCssOverlayBlur(true);
+    applyOverlay("", true);
 
     const image = new Image();
     image.crossOrigin = "anonymous";
