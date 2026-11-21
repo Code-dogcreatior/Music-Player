@@ -3747,3 +3747,134 @@ button:not(:disabled):active,
     height: 16px;
   }
 }
+
+/* 搜索结果状态面板：空结果 / 超时截断 / 失败都不再静默。 */
+.search-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #3a3a3c;
+  font-size: 13px;
+}
+
+.search-status.idle {
+  color: #8e8e93;
+}
+
+.search-status.idle svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.search-status.idle p {
+  flex: 1;
+  margin: 0;
+}
+
+.search-status.loading {
+  display: grid;
+  gap: 10px;
+  color: #6e6e73;
+}
+
+.search-status.loading p {
+  margin: 0;
+}
+
+.search-skeleton {
+  display: grid;
+  gap: 8px;
+}
+
+.search-skeleton-row {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eeeef1 25%, #f6f6f8 37%, #eeeef1 63%);
+  background-size: 400% 100%;
+  animation: searchSkeletonShimmer 1.4s ease infinite;
+}
+
+.search-skeleton-row:nth-child(2) {
+  width: 82%;
+}
+
+.search-skeleton-row:nth-child(3) {
+  width: 64%;
+}
+
+@keyframes searchSkeletonShimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+.search-status.warn {
+  border-color: rgba(255, 149, 0, 0.32);
+  background: rgba(255, 250, 242, 0.9);
+}
+
+.search-status.error {
+  border-color: rgba(215, 0, 21, 0.26);
+  background: rgba(255, 246, 247, 0.9);
+}
+
+.search-status-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.search-status-body strong {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.search-status-body p {
+  margin: 0;
+  color: #6e6e73;
+  line-height: 1.45;
+}
+
+.search-status-retry {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: #1d1d1f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.search-status-retry svg {
+  width: 15px;
+  height: 15px;
+}
+
+.search-status-retry:hover {
+  background: #2f3036;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-skeleton-row {
+    animation: none;
+  }
+}

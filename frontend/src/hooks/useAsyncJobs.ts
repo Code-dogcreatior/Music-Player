@@ -12,6 +12,11 @@ export type SearchJobResponse = {
   detail?: string;
   songs?: Song[];
   cached?: boolean;
+  /** 后端整体超时截断时为 true，此时结果可能不全。 */
+  timed_out?: boolean;
+  /** 每个源实际尝试次数（空结果自动重试后 >1），供界面与灰测观察。 */
+  source_attempts?: Record<string, number>;
+  search_elapsed_ms?: number;
 };
 
 export type DownloadJobResponse = {
@@ -29,6 +34,57 @@ export type DownloadToast = {
   percent: number;
 };
 
+export type SearchOutcomeState = "idle" | "loading" | "ready" | "empty" | "partial" | "error";
+
+/** 搜索结果状态：空结果/超时截断/失败都要能被界面区分，不再静默。 */
+export type SearchOutcome = {
+  state: SearchOutcomeState;
+  /** 面向用户的补充说明；error 时是失败原因。 */
+  message?: string;
+  retryable: boolean;
+  songCount?: number;
+  elapsedMs?: number;
+};
+
+export const IDLE_SEARCH_OUTCOME: SearchOutcome = { state: "idle", retryable: false };
+export const LOADING_SEARCH_OUTCOME: SearchOutcome = { state: "loading", retryable: false };
+
+/** 把后端响应统一翻译成界面状态。 */
+export function describeSearchResult(data: SearchJobResponse): SearchOutcome {
+  const songCount = (data.songs ?? []).length;
+  const elapsedMs = Number(data.search_elapsed_ms || 0);
+
+  if (data.status === "failed") {
+    return {
+      state: "error",
+      retryable: true,
+      songCount: 0,
+      message: data.error || data.message || "搜索失败",
+    };
+  }
+
+  if (songCount === 0) {
+    return {
+      state: "empty",
+      retryable: true,
+      songCount: 0,
+      elapsedMs,
+      message: data.timed_out ? "音乐源响应超时，未能返回结果。" : "",
+    };
+  }
+
+  return {
+    state: data.timed_out ? "partial" : "ready",
+    retryable: Boolean(data.timed_out),
+    songCount,
+    elapsedMs,
+  };
+}
+
+export function searchErrorOutcome(message: string): SearchOutcome {
+  return { state: "error", retryable: true, songCount: 0, message };
+}
+
 type UseAsyncJobsOptions = {
   jobId: string;
   setJobId: Dispatch<SetStateAction<string>>;
@@ -37,6 +93,7 @@ type UseAsyncJobsOptions = {
   setSongs: Dispatch<SetStateAction<Song[]>>;
   setSelectedIndexes: Dispatch<SetStateAction<Set<number>>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
+  setSearchOutcome: Dispatch<SetStateAction<SearchOutcome>>;
 };
 
 export function cancelController(ref: MutableRefObject<AbortController | null>) {
@@ -99,6 +156,7 @@ export function useAsyncJobs({
   setSongs,
   setSelectedIndexes,
   setLoading,
+  setSearchOutcome,
 }: UseAsyncJobsOptions) {
   const [downloadToast, setDownloadToast] = useState<DownloadToast | null>(null);
   const searchPollAbortRef = useRef<AbortController | null>(null);
@@ -225,13 +283,9 @@ export function useAsyncJobs({
         if (cancelled) return;
 
         applySearchData(data);
-        if (data.status === "finished") {
-          setLoading(false);
-          setSearchJobId("");
-          searchSubmitLockRef.current = false;
-          return;
-        }
-        if (data.status === "failed") {
+        if (data.status === "finished" || data.status === "failed") {
+          // 空结果、超时截断、失败都要如实上报，避免出现「无提示的空表格」。
+          setSearchOutcome(describeSearchResult(data));
           setLoading(false);
           setSearchJobId("");
           searchSubmitLockRef.current = false;
@@ -244,6 +298,7 @@ export function useAsyncJobs({
           timer = window.setTimeout(poll, 1000);
           return;
         }
+        setSearchOutcome(searchErrorOutcome("搜索请求失败，请确认后端仍在运行。"));
         setLoading(false);
         setSearchJobId("");
         searchSubmitLockRef.current = false;
@@ -256,7 +311,7 @@ export function useAsyncJobs({
       cancelController(searchPollAbortRef);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [searchJobId, setLoading, setSearchJobId, setSelectedIndexes, setSongs]);
+  }, [searchJobId, setLoading, setSearchJobId, setSearchOutcome, setSelectedIndexes, setSongs]);
 
   useEffect(() => {
     return () => {

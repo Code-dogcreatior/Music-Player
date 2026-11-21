@@ -131,6 +131,9 @@ class SearchJob:
         self.songs: list[dict[str, Any]] = []
         self.results: dict[str, Any] = {}
         self.cached = False
+        self.timed_out = False
+        # 每个源实际尝试了几次（空结果自动重试后 >1），供前端与灰测观察。
+        self.source_attempts: dict[str, int] = {}
         self.search_elapsed_ms = 0
         self.created_at = datetime.now().isoformat(timespec="seconds")
         self.finished_at = ""
@@ -152,6 +155,10 @@ class SearchJob:
             self.done_sources += 1
             self.message = f"已返回 {len(self.songs)} 首，来源 {self.done_sources}/{self.total_sources}"
 
+    def set_source_attempts(self, source: str, attempts: int) -> None:
+        with self._lock:
+            self.source_attempts[source] = attempts
+
     def mark_source_done(self, source: str, error: str | None = None) -> None:
         with self._lock:
             if source not in self.results:
@@ -164,6 +171,7 @@ class SearchJob:
     def finish(self, started_at: float, timed_out: bool = False) -> None:
         with self._lock:
             self.status = "finished"
+            self.timed_out = bool(timed_out)
             self.search_elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             self.finished_at = datetime.now().isoformat(timespec="seconds")
             if timed_out and self.done_sources < self.total_sources:
@@ -193,6 +201,9 @@ class SearchJob:
                 "results": {},
                 "songs": list(self.songs),
                 "cached": self.cached,
+                # 前端据此区分「完整结果 / 来源超时截断 / 空结果」。
+                "timed_out": self.timed_out,
+                "source_attempts": dict(self.source_attempts),
                 "search_elapsed_ms": self.search_elapsed_ms,
                 "created_at": self.created_at,
                 "finished_at": self.finished_at,
@@ -205,11 +216,13 @@ def sort_source_results_for_display(source: str, source_results: list[Any]) -> l
 
     def qq_parser_rank(song: Any) -> int:
         audio_source = str(service._song_get(song, "audio_parse_source", "") or "").lower()
-        if "huibq" in audio_source:
+        if "vkeys" in audio_source:
             return 0
-        if "tang" in audio_source:
+        if "huibq" in audio_source:
             return 1
-        return 2
+        if "tang" in audio_source:
+            return 2
+        return 3
 
     return sorted(source_results, key=qq_parser_rank)
 
@@ -334,7 +347,7 @@ lyrics_translate_jobs: dict[str, LyricsTranslateJob] = {}
 finished_lyrics_translate_jobs: dict[str, dict[str, Any]] = {}
 current_recommendation_job_id = ""
 MAX_RECOMMENDATIONS = 15
-SEARCH_JOB_TIMEOUT_SECONDS = 12
+# 搜索超时与单源重试策略定义在下方 _read_limited_int_env 之后（支持环境变量覆盖）。
 MAX_ACTIVE_SEARCH_JOBS = 3
 MAX_ACTIVE_DOWNLOAD_JOBS = 2
 MAX_ACTIVE_RECOMMENDATION_JOBS = 1
@@ -386,6 +399,15 @@ def _read_limited_int_env(name: str, default: int, minimum: int, maximum: int) -
 
 ALI_MAX_WORKERS = _read_limited_int_env("ALI_TRANSLATE_MAX_WORKERS", 18, 1, 64)
 DEEPSEEK_MAX_WORKERS = _read_limited_int_env("DEEPSEEK_TRANSLATE_MAX_WORKERS", 24, 1, 64)
+
+# 搜索任务整体超时：QQ 单次搜索实测最慢约 22s，原 12s 会把还在解析的来源直接截断。
+# MP_SEARCH_MAX_ATTEMPTS=1 即退回「不重试」的修复前行为，便于灰测对比与回滚。
+SEARCH_JOB_TIMEOUT_SECONDS = _read_limited_int_env("MP_SEARCH_JOB_TIMEOUT_SECONDS", 40, 5, 180)
+MAX_SOURCE_SEARCH_ATTEMPTS = _read_limited_int_env("MP_SEARCH_MAX_ATTEMPTS", 2, 1, 5)
+SEARCH_RETRY_BACKOFF_SECONDS = 0.4
+# 剩余预算不足这么多秒就不再多试一次，避免重试把任务拖过整体超时。
+SEARCH_MIN_RETRY_BUDGET_SECONDS = 8
+
 translate_provider_semaphores = {
     "ali": threading.BoundedSemaphore(ALI_MAX_WORKERS),
     "dp": threading.BoundedSemaphore(DEEPSEEK_MAX_WORKERS),
@@ -857,24 +879,49 @@ def list_downloaded_song_dicts(save_dir: str) -> list[dict[str, Any]]:
     return items
 
 
-def _run_source_search(payload: SearchPayload, source: str) -> tuple[str, Any]:
-    music_client = service.init_music_client(
-        selected_sources=[source],
-        limit=payload.limit,
-        save_dir=_effective_save_dir(payload.save_dir),
-    )
-    if not music_client:
-        raise RuntimeError("musicdl 初始化失败")
-    results = service.search(music_client, payload.keyword, payload.search_type)
+def _extract_source_results(results: Any, source: str) -> Any:
     if isinstance(results, dict):
         if source in results:
-            return source, results[source]
+            return results[source]
         merged_results: list[Any] = []
         for source_results in results.values():
             if isinstance(source_results, list):
                 merged_results.extend(source_results)
-        return source, merged_results
-    return source, results
+        return merged_results
+    return results
+
+
+def _run_source_search(payload: SearchPayload, source: str, deadline: float | None = None) -> tuple[str, Any, int]:
+    """搜索单个来源，返回 (source, results, attempts)。
+
+    上游第三方解析接口抖动时，musicdl 会静默丢弃拿不到下载链接的歌曲，整源可能返回 0 首
+    （见 musicdl sources/qq.py 的 valid-download-url 过滤）。这里对「0 首」自动重试，
+    把「用户被迫手动再搜一次」变成后端内部行为；有结果时立即返回，不增加正常路径耗时。
+    """
+    attempts = 0
+    results: Any = []
+    while attempts < MAX_SOURCE_SEARCH_ATTEMPTS:
+        attempts += 1
+        # 每次都新建客户端，避免复用上一次失败留下的 session/cookie 状态。
+        music_client = service.init_music_client(
+            selected_sources=[source],
+            limit=payload.limit,
+            save_dir=_effective_save_dir(payload.save_dir),
+        )
+        if not music_client:
+            raise RuntimeError("musicdl 初始化失败")
+        results = _extract_source_results(
+            service.search(music_client, payload.keyword, payload.search_type), source
+        )
+        if normalize_source_results(results):
+            break
+        if attempts >= MAX_SOURCE_SEARCH_ATTEMPTS:
+            break
+        if deadline is not None and time.perf_counter() >= deadline - SEARCH_MIN_RETRY_BUDGET_SECONDS:
+            # 剩余预算不足，不再多试一次，把空结果如实返回。
+            break
+        time.sleep(SEARCH_RETRY_BACKOFF_SECONDS)
+    return source, results, attempts
 
 
 def _search_worker(job: SearchJob, payload: SearchPayload, started_at: float):
@@ -884,7 +931,7 @@ def _search_worker(job: SearchJob, payload: SearchPayload, started_at: float):
         deadline = time.perf_counter() + SEARCH_JOB_TIMEOUT_SECONDS
         executor = ThreadPoolExecutor(max_workers=max(1, min(len(payload.selected_sources), 6)))
         future_to_source = {
-            executor.submit(_run_source_search, payload, source): source
+            executor.submit(_run_source_search, payload, source, deadline): source
             for source in payload.selected_sources
         }
         try:
@@ -902,7 +949,14 @@ def _search_worker(job: SearchJob, payload: SearchPayload, started_at: float):
                     pending.discard(future)
                     source = future_to_source[future]
                     try:
-                        resolved_source, source_results = future.result()
+                        resolved_source, source_results, attempts = future.result()
+                        job.set_source_attempts(resolved_source, attempts)
+                        if attempts > 1:
+                            print(
+                                f"[search] {resolved_source} 空结果已重试，第 {attempts} 次拿到 "
+                                f"{len(normalize_source_results(source_results))} 首（关键词：{payload.keyword}）",
+                                flush=True,
+                            )
                         job.add_source_results(resolved_source, source_results)
                     except Exception as exc:
                         job.mark_source_done(source, f"{source}: {exc}")
@@ -1096,7 +1150,7 @@ def _download_worker(job: DownloadJob, payload: DownloadPayload):
             if hasattr(download_item, "_save_path"):
                 download_item._save_path = None
             if not getattr(download_item, "with_valid_download_url", False):
-                raise RuntimeError("下载失败：QQ 当前仅使用 huibq/tang 解析，但这两条通路未返回有效下载地址")
+                raise RuntimeError("下载失败：QQ 解析接口未返回有效下载地址")
             service.download(music_client, [download_item])
             after_files = set(service.list_audio_files(save_dir))
             new_files = sorted(after_files - before_files)

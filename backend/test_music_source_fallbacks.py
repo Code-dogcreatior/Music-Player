@@ -48,6 +48,69 @@ class MusicSourceFallbackTests(unittest.TestCase):
         self.assertEqual(kwargs["timeout"], 3)
         self.assertNotIn("X-Old", kwargs["headers"])
 
+    def test_qq_vkeys_fallback_uses_stream_url(self):
+        response = Mock()
+        response.json.return_value = {
+            "code": 0,
+            "data": {
+                "url": "http://ws.stream.qqmusic.qq.com/M800song.mp3",
+                "link": "https://i.y.qq.com/v8/playsong.html?songmid=song-mid",
+            },
+        }
+        client = SimpleNamespace(
+            source="QQMusicClient",
+            get=Mock(return_value=response),
+            audio_link_tester=SimpleNamespace(
+                test=Mock(
+                    return_value={
+                        "ok": True,
+                        "ext": "mp3",
+                        "file_size_bytes": 321,
+                        "file_size": "321 B",
+                        "download_url": "http://ws.stream.qqmusic.qq.com/M800song.mp3",
+                    }
+                )
+            ),
+        )
+
+        song = self.service._parse_qq_vkeys(
+            client,
+            {
+                "mid": "song-mid",
+                "title": "歌曲",
+                "singer": [{"name": "歌手"}],
+                "album": {"title": "专辑", "mid": "album-mid"},
+                "interval": 180,
+            },
+            (8,),
+            {"timeout": 4, "headers": {"X-Old": "ignored"}},
+        )
+
+        self.assertTrue(song.with_valid_download_url)
+        self.assertEqual(song.audio_parse_source, "QQ音乐/vkeys")
+        args, kwargs = client.get.call_args
+        self.assertIn("quality=8", args[0])
+        self.assertEqual(kwargs["timeout"], 4)
+        self.assertNotIn("X-Old", kwargs["headers"])
+
+    def test_qq_fast_playback_prefers_vkeys_when_tang_is_down(self):
+        expected = SimpleNamespace(with_valid_download_url=True, lyric="")
+        client = SimpleNamespace(source="QQMusicClient")
+        search_result = {"mid": "song-mid"}
+
+        with (
+            patch.object(self.service, "_parse_qq_vkeys", return_value=expected) as vkeys,
+            patch.object(self.service, "_parse_qq_tang") as tang,
+            patch.object(self.service, "_parse_qq_lx_url") as huibq,
+            patch.object(self.service, "_supplement_qq_lyric", side_effect=lambda *_args, **_kwargs: expected),
+        ):
+            song = self.service._parse_qq_fast_playback(client, search_result, {"timeout": 3})
+
+        self.assertIs(song, expected)
+        vkeys.assert_called_once()
+        tang.assert_not_called()
+        huibq.assert_not_called()
+
     def test_kuwo_prefers_https_third_party_fallback(self):
         expected = SimpleNamespace(
             with_valid_download_url=True,

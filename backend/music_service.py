@@ -488,6 +488,56 @@ class MusicService:
         except Exception:
             return SongInfo(source=client_self.source, raw_data={"search": search_result, "download": {}, "lyric": {}})
 
+    def _parse_qq_vkeys(self, client_self, search_result: dict, qualities: tuple[int, ...] = (8,), request_overrides=None):
+        """vkeys 目前仍可用；tang SSL 失败、huibq 已停服。"""
+        request_overrides = dict(request_overrides or {})
+        request_overrides.pop("headers", None)
+        request_overrides.setdefault("timeout", 6)
+        song_id = search_result.get("mid") or search_result.get("songmid")
+        empty = SongInfo(
+            source=client_self.source,
+            raw_data={"search": search_result, "download": {}, "lyric": {}},
+        )
+        if not song_id:
+            return empty
+        last_empty = empty
+        for quality in qualities:
+            try:
+                response = client_self.get(
+                    f"https://api.vkeys.cn/music/tencent/song/link?mid={song_id}&quality={quality}",
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+                        )
+                    },
+                    **request_overrides,
+                )
+                if response is None:
+                    continue
+                response.raise_for_status()
+                download_result = response.json()
+                payload = download_result.get("data") if isinstance(download_result, dict) else {}
+                if not isinstance(payload, dict):
+                    payload = {}
+                download_url = payload.get("url")
+                if not isinstance(download_url, str) or not download_url.startswith("http") or "playsong.html" in download_url:
+                    continue
+                song_info = self._build_qq_song_info(
+                    client_self,
+                    search_result,
+                    download_result,
+                    download_url,
+                    request_overrides,
+                    audio_parser="vkeys",
+                )
+                if self._is_valid_song_info(song_info):
+                    return song_info
+                last_empty = song_info
+            except Exception:
+                continue
+        return last_empty
+
     def _parse_qq_tang(self, client_self, search_result: dict, request_overrides=None):
         """解析 tang 接口，避开 musicdl 方法中 timeout 参数重复的问题。"""
         request_overrides = dict(request_overrides or {})
@@ -536,18 +586,25 @@ class MusicService:
     def _parse_qq_fast_playback(self, client_self, search_result: dict, request_overrides=None):
         request_overrides = request_overrides or {}
         empty = SongInfo(source=client_self.source, raw_data={"search": search_result, "download": {}, "lyric": {}})
-        # QQ 默认优先策略：tang 优先（huibq 常返回“禁止批量下载”），失败再试 huibq。
-        try:
-            song_info = self._parse_qq_tang(client_self, search_result, request_overrides)
+        # QQ：vkeys 优先；tang / huibq 仅作兜底（2026-11 实测 tang SSL 失败、huibq 已停服）。
+        parsers = (
+            lambda: self._parse_qq_vkeys(client_self, search_result, (8, 10), request_overrides),
+            lambda: self._parse_qq_tang(client_self, search_result, request_overrides),
+            lambda: self._parse_qq_lx_url(
+                client_self,
+                search_result,
+                "320k",
+                "huibq",
+                {**dict(request_overrides), "timeout": min(int((request_overrides or {}).get("timeout") or 3), 2)},
+            ),
+        )
+        for parse in parsers:
+            try:
+                song_info = parse()
+            except Exception:
+                continue
             if self._is_valid_song_info(song_info):
                 return self._supplement_qq_lyric(client_self, song_info, search_result, request_overrides)
-        except Exception:
-            pass
-        huibq_overrides = dict(request_overrides)
-        huibq_overrides["timeout"] = min(int(huibq_overrides.get("timeout") or 3), 2)
-        song_info = self._parse_qq_lx_url(client_self, search_result, "320k", "huibq", huibq_overrides)
-        if self._is_valid_song_info(song_info):
-            return self._supplement_qq_lyric(client_self, song_info, search_result, request_overrides)
         return empty
 
     def prefer_download_quality(self, music_client, song_info):
@@ -575,8 +632,9 @@ class MusicService:
                 fallback = candidate
             return False
 
-        # QQ 下载提质：tang 优先拿无损；huibq 作短超时兜底。
+        # QQ 下载提质：vkeys 无损优先，tang / huibq 仅作兜底。
         priority_try = [
+            ("vkeys", lambda: self._parse_qq_vkeys(qq_client, search_result, (10, 8), req)),
             ("tang", lambda: self._parse_qq_tang(qq_client, search_result, req)),
             ("huibq", lambda: self._parse_qq_lx_url(qq_client, search_result, "flac", "huibq", {"timeout": 2})),
         ]

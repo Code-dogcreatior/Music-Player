@@ -187,8 +187,8 @@ python build.py --clean
 应用版本统一维护在 [backend/app_version.py](backend/app_version.py)。提交版本修改后，推送与版本完全一致的标签：
 
 ```powershell
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 `.github/workflows/release.yml` 会在 Windows Runner 上执行测试、前端构建、PyInstaller 打包，并上传 ZIP 和 SHA-256 到 GitHub Release。标签与 `APP_VERSION` 不一致时发布会失败。

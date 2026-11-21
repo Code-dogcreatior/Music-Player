@@ -4,6 +4,7 @@ import { isAbortError, requestJson, SEARCH_TYPE_SONG } from "./api";
 import { useAudioEffects } from "./audioEffects";
 import { FullscreenPlayer, type OverlayRightPanel } from "./components/FullscreenPlayer";
 import { PlayerBar } from "./components/PlayerBar";
+import { SearchStatusPanel } from "./components/SearchStatusPanel";
 import { SearchToolbar } from "./components/SearchToolbar";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
@@ -12,11 +13,16 @@ import { useBlurredOverlayCover } from "./coverBlur";
 import { mergeTranslatedLrc, parseLrc, shouldOfferChineseTranslation } from "./lyrics";
 import {
   cancelController,
+  describeSearchResult,
   downloadToastTitle,
+  IDLE_SEARCH_OUTCOME,
+  LOADING_SEARCH_OUTCOME,
   nextController,
+  searchErrorOutcome,
   useAsyncJobs,
   waitForMsOrAbort,
   type SearchJobResponse,
+  type SearchOutcome,
 } from "./hooks/useAsyncJobs";
 import { useAppUpdate } from "./hooks/useAppUpdate";
 import { useLyricsRuntime } from "./hooks/useLyricsRuntime";
@@ -88,6 +94,7 @@ function App() {
   const [jobId, setJobId] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchJobId, setSearchJobId] = useState("");
+  const [searchOutcome, setSearchOutcome] = useState<SearchOutcome>(IDLE_SEARCH_OUTCOME);
   const [activeView, setActiveView] = useState<ActiveView>("search");
   const [downloadedLibrarySongs, setDownloadedLibrarySongs] = useState<Song[]>([]);
   const [downloadedSongs, setDownloadedSongs] = useState<Song[]>([]);
@@ -152,6 +159,7 @@ function App() {
     setSongs,
     setSelectedIndexes,
     setLoading,
+    setSearchOutcome,
   });
   const {
     lyrics,
@@ -346,6 +354,7 @@ function App() {
     if (!keyword.trim()) return;
     searchSubmitLockRef.current = true;
     setLoading(true);
+    setSearchOutcome(LOADING_SEARCH_OUTCOME);
     setSearchJobId("");
     cancelSearchPoll();
     setSongs([]);
@@ -367,12 +376,15 @@ function App() {
       setSongs(searchSongs);
       setSelectedIndexes(new Set());
       if (data.job_id && data.status !== "finished" && !data.cached) {
+        // 结果由轮询补全，searchOutcome 会在轮询结束时更新。
         setSearchJobId(data.job_id);
         return;
       }
+      setSearchOutcome(describeSearchResult(data));
       setLoading(false);
       searchSubmitLockRef.current = false;
     } catch {
+      setSearchOutcome(searchErrorOutcome("搜索请求失败，请确认后端仍在运行。"));
       setLoading(false);
       searchSubmitLockRef.current = false;
     }
@@ -695,6 +707,12 @@ function App() {
   }
 
   const selectedCount = useMemo(() => selectedIndexes.size, [selectedIndexes]);
+  const selectedSourceLabel = useMemo(() => {
+    const labels = Object.entries(sources)
+      .filter(([, sourceEn]) => selectedSources.includes(sourceEn))
+      .map(([sourceCn]) => sourceCn);
+    return labels.length > 0 ? labels.join("、") : "音乐源";
+  }, [selectedSources, sources]);
   const heroTitle =
     activeView === "search" ? "在线搜索" : activeView === "downloaded" ? "本地音乐库" : "设置";
   const heroDescription =
@@ -850,6 +868,13 @@ function App() {
                 onSearch={() => void onSearch()}
                 onDownload={() => void onDownload()}
               />
+              {activeView === "search" && (
+                <SearchStatusPanel
+                  outcome={searchOutcome}
+                  sourceLabel={selectedSourceLabel}
+                  onRetry={() => void onSearch()}
+                />
+              )}
               <SongTable
                 activeView={activeView}
                 songs={visibleSongs}
